@@ -17,6 +17,8 @@ def get_args():
     parser.add_argument('--loss_func', choices=['dice_ce', 'dice_focal'], default='dice_ce')
     parser.add_argument('--batch_type', choices=['patch', 'aug', 'not'], default='not', help='If in [patch, aug] --quasi_batch_size should been setting.')
     parser.add_argument('--quasi_batch_size', type=int)
+    parser.add_argument('--num_aug', type=int, default=0)
+    parser.add_argument('--poor_mode', action='store_true', default=False)
 
 
     parser.add_argument("--checkpoint", default=None, help="start training from saved checkpoint")
