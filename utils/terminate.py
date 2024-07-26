@@ -61,6 +61,6 @@ def show_training_info(epoch, idx, len_loader, avg_run_loss, start_time, args):
         return None
     print(
         "Epoch {}/{} {}/{}".format(epoch, args.max_epochs, idx, len_loader),
-        "loss: {:.4f}".format(avg_run_loss.avg),
+        "loss: {:.4f}".format(avg_run_loss),
         "time {:.2f}s".format(time.time() - start_time),
     )
