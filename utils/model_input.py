@@ -161,7 +161,11 @@ def prepare_sam_training_input(inputs: torch.Tensor, labels: torch.Tensor, args:
 
     # preprocess make the size of label same as low_res_logit
     # The shape is (B, Nc, H, W)
-    batch_labels_ = torch.stack([labels == unique_labels[i] for i in range(len(unique_labels))], dim=1).float()
+    buf_labels = [labels == unique_labels[i] for i in range(len(unique_labels))]
+    if args.poor_mode:
+        batch_labels_ = torch.stack(buf_labels).unsqueeze(0).float()
+    else:
+        batch_labels_ = torch.stack(buf_labels, dim=1).float()
     ic(batch_labels_.shape)
     # The shape will become (B, NC, sam_H / 4, sam_W / 4)
     if args.distributed:
