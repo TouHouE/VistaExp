@@ -9,6 +9,7 @@ from typing import Optional, Tuple, Type
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from icecream import ic
 
 from models.common import LayerNorm2d, MLPBlock
 
@@ -102,6 +103,7 @@ class ImageEncoderViT(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        ic(x.shape)
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
