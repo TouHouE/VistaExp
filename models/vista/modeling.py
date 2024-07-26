@@ -182,8 +182,6 @@ class Vista2pt5D(nn.Module):
                 masks=image_record.get("mask_inputs", None),
                 class_labels=image_record.get("labels", None),
             )
-            print('spe_emb.shape: ', sparse_embeddings.shape)
-            print('den_emb.shape: ', dense_embeddings.shape)
 
             low_res_masks, iou_predictions = self.mask_decoder(
                 image_embeddings=curr_embedding.unsqueeze(0),
