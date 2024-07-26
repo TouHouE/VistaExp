@@ -1,5 +1,7 @@
 import time
 
+import torch.nn
+
 
 def show_prob(args):
     print(
@@ -37,22 +39,26 @@ def show_valided_info(epoch, val_avg_acc, val_MA, best_epoch, val_acc_max, epoch
     )
 
 
+@torch.no_grad()
 def show_model_info(model, args):
     if args.rank != 0:
         return
     sub_module = dict()
-    for module_name, module_param in model.named_parameters(recurse=False):
+    # breakpoint()
+
+    for module_name, module_param in model.named_parameters():
         if not module_param.requires_grad:
             continue
-        if sub_module.get(module_name, None) is None:
-            module_param[module_param] = list()
-        for name, param in module_param.named_parameters():
-            module_param[module_name].append(param.numel())
+        key = module_name.split('.')[0]
+        if sub_module.get(key, None) is None:
+            sub_module[key] = list()
+        sub_module[key].append(module_param.numel())
 
-    print(f'|{"Module Name":20}|{"Size(MB)":20}|')
+    print(f'|{"Module Name":^20}|{"Size(MB)":^20}|')
+    print(f'|{"-" * 20}|{"-" * 20}|')
     for mname, param_list in sub_module.items():
-        size = f'{sum(param_list) * 1e-6:.4f}'
-        print(f'|{mname:20}|{size:20}|')
+        size = f'{sum(param_list) * 1e-6:^.4f}'
+        print(f'|{mname:^20}|{size:^20}|')
     return
 
 
