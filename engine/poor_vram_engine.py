@@ -388,7 +388,7 @@ def run_training(
     writer = None
     run = None
     scaler = None
-    poor_train_epoch = find_executable_batch_size(train_epoch, args.quasi_batch)
+    # poor_train_epoch = find_executable_batch_size(train_epoch, args.quasi_batch)
     if args.logdir is not None and args.rank == 0:
         writer = SummaryWriter(log_dir=args.logdir)
         if args.rank == 0:
