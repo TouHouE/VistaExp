@@ -27,7 +27,8 @@ from monai.transforms import Activations, AsDiscrete, Compose
 from monai.utils import set_determinism
 from monai.utils.enums import MetricReduction
 from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
-from engine.builtin_engine import run_training
+from engine import builtin_engine as NormEngine
+from engine import poor_vram_engine as PoorEngine
 from utils.data_utils import get_loader
 from utils import get_args
 from models import vista_model_registry
@@ -164,6 +165,10 @@ def main_worker(gpu, args):
             scheduler.step(epoch=start_epoch)
     else:
         scheduler = None
+    if args.poor_mode:
+        run_training = PoorEngine.run_training
+    else:
+        run_training = NormEngine.run_training
     accuracy = run_training(
         model=model,
         train_loader=loader[0],
