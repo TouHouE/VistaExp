@@ -82,19 +82,21 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     for idx, batch_data in enumerate(loader):
         # only take 1 batch
         inputs_l = batch_data["image"]
-        only_image = 'label' in batch_data
+        only_image = 'label' not in batch_data
         labels_l = batch_data.get("label", torch.zeros_like(inputs_l))
-
-        n_z_before_pad = labels_l.shape[-1]
-        # pad the z direction, so we can easily extract 2.5D input and predict labels for the center slice
+        # Remove original batch_size and the channel axes. Then swap the slice-axis at first
+        labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
+        # Only image need padding for make sure its shape is same as original shape.
         inputs_l = F.pad(inputs_l, pd, "constant", 0)
-        _loss = torch.tensor(0.0).cuda(args.rank)
-        random_ids = np.random.choice(n_z_before_pad, size=args.num_patch, replace=False)
-        inputs_l = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(3, 0, 1, 2).contiguous()
-        labels_l = labels_l.squeeze().unfold(-1, 1, 1).permute(2, 0, 1).contiguous()
+        inputs_l = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(3, 2, 0, 1).contiguous()
 
-        _loss += iter_slice_patch(
-            random_ids, inputs_l, labels_l, model, optimizer, scaler, 'label' not in batch_data, loss_func, args
+        if (bs_size := args.num_patch) >= (num_group := inputs_l.shape[0]):
+            random_ids = torch.arange(num_group)
+        else:
+            random_ids = torch.from_numpy(np.random.choice(inputs_l.shape[0], size=bs_size, replace=False))
+
+        _loss = iter_slice_patch(
+            random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args
         )
 
         if args.distributed:
@@ -106,13 +108,14 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
                 np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0), n=args.batch_size * args.world_size
             )
         else:
-            run_loss.update(_loss.item(), n=args.num_patch)
+            run_loss.update(_loss.item(), n=len(random_ids))
         Terminate.show_training_info(epoch, idx, len(loader), run_loss.avg, start_time, args)
         start_time = time.time()
     # I suggest this function is like optimizer.zero_grad(set_to_none=True)
     for param in model.parameters():
         param.grad = None
     return run_loss.avg
+
 
 def train_epoch_iterative(model, loader, optimizer, scaler, epoch, loss_func, run, args):
     model.train()
