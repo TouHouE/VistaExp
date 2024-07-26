@@ -16,6 +16,7 @@ from monai.metrics import compute_dice
 from monai import transforms as MF
 from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
+from icecream import ic
 
 
 from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
@@ -30,34 +31,47 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     run_loss = AverageMeter()
     assert args.roi_z_iter % 2 == 1
     n_slice = args.roi_z_iter
-    pd = (n_slice // 2, n_slice // 2)
+    pd = (n_slice // 2, n_slice // 2)    
 
     for idx, batch_data in enumerate(loader):
         # only take 1 batch
         inputs_l = batch_data["image"]
-        only_image = 'label' in batch_data
+        only_image = 'label' not in batch_data
         labels_l = batch_data.get("label", torch.zeros_like(inputs_l))
         # TODO: we only support batch_size = 1 for data loader.
         n_z_before_pad = labels_l.shape[-1]
         # pad the z direction, so we can easily extract 2.5D input and predict labels for the center slice
         inputs_l = F.pad(inputs_l, pd, "constant", 0)
-        _loss = torch.tensor(0.0).cuda(args.rank)
-        random_ids = torch.from_numpy(np.random.choice(n_z_before_pad, size=args.num_patch, replace=False))
-        inputs = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(3, 0, 1, 2)[random_ids].contiguous()
-        labels = labels_l.squeeze().unfold(-1, 1, 1).permute(2, 0, 1)[random_ids].contiguous()
+        _loss = torch.tensor(0.0).cuda(args.rank)        
+        _tot_vae_loss = torch.tensor(.0).cuda(args.rank)
+        inputs = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()        
+        bs_size = args.quasi_batch_size
+        if bs_size >= inputs.shape[0]:
+            bs_size = inputs.shape[0]
+
+        random_ids = torch.from_numpy(np.random.choice(inputs.shape[0], size=bs_size, replace=False))
+        inputs = inputs[random_ids]
+        labels = labels_l.squeeze()[..., random_ids].permute(2, 0, 1).contiguous()                
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
             inputs.cuda(args.rank), labels.cuda(args.rank), args, model
         )
+        
         with autocast(enabled=args.amp):
             outputs = model(data, is_train=True)
         # not sure this operation is correct or not, i trying to cat at channels axis(maybe)
         pred_mask = torch.cat([_out['low_res_logits'] for _out in outputs], dim=1)
         pred_mask = pred_mask.permute(1, 0, 2, 3)
-        if only_image and not skip:
-            loss = torch.sum(*[getattr(_out, 'vae_loss', torch.tensor(.0).cuda(args.rank)) for _out in outputs])
-        elif not skip:
+        has_vae = outputs[0].get('vae_loss', None) is not None
+        if has_vae:
+            for _out in outputs:
+                _tot_vae_loss += _out['vae_loss']
+            _tot_vae_loss /= len(outputs)
+
+        if only_image:            
+            loss = _tot_vae_loss
+        else:
             loss = loss_func(pred_mask, target)
-            loss += .1 * torch.sum(*[getattr(_out, 'vae_loss', torch.tensor(.0).cuda(args.rank)) for _out in outputs])
+            loss += .1 * _tot_vae_loss            
 
         if args.amp:
             scaler.scale(loss).backward()
@@ -281,16 +295,12 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
 
         for idx, batch_data in enumerate(loader):
             # only take 1 batch
-            inputs_l = batch_data["image"]
-            labels_l = batch_data["label"]
+            inputs_l = batch_data["image"].squeeze(0)
+            labels_l = batch_data["label"].squeeze(0)
             B = inputs_l.shape[0]
             n_slice = args.roi_z_iter
             # pad the z direction, so we can easily extract 2.5D input and predict labels for the center slice
             pd = (n_slice // 2, n_slice // 2)
-
-            if B == 1:
-                inputs_l = inputs_l.squeeze()
-                labels_l = labels_l.squeeze()
 
             # padding at last axis (z-axis), the goal in this step like convolution padding
             inputs_l = F.pad(inputs_l, pd, "constant", 0)
