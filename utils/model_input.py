@@ -6,6 +6,7 @@ from typing import Type
 import torch
 import numpy as np
 from monai.data import MetaTensor
+from icecream import ic
 
 from models.vista.modeling import Vista2pt5D
 
@@ -160,7 +161,8 @@ def prepare_sam_training_input(inputs: torch.Tensor, labels: torch.Tensor, args:
 
     # preprocess make the size of label same as low_res_logit
     # The shape is (B, Nc, H, W)
-    batch_labels_ = torch.cat([labels == unique_labels[i] for i in range(len(unique_labels))], dim=1).float()
+    batch_labels_ = torch.stack([labels == unique_labels[i] for i in range(len(unique_labels))], dim=1).float()
+    ic(batch_labels_.shape)
     # The shape will become (B, NC, sam_H / 4, sam_W / 4)
     if args.distributed:
         batch_labels = model.module.preprocess(batch_labels_, is_input=False)
