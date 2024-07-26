@@ -450,7 +450,7 @@ def run_training(
                 raise NotImplementedError
         else:
             print(f" Rank: {args.rank} Single-step Training")
-            train_loss = poor_train_epoch(
+            train_loss = train_epoch(
                 model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func, args=args
             )
         # Training Done.
