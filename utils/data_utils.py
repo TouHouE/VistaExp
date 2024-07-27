@@ -176,7 +176,7 @@ def split_data(args):
         if (not os.path.exists(str_img)) or (not os.path.exists(str_seg)):
             continue
 
-        files.append({"image": str_img, "label": str_seg})
+        files.append({"image": str_img, "label": str_seg, 'image_name': str_img, 'label_name': str_seg})
 
     train_files = copy.deepcopy(files)
 
@@ -188,7 +188,7 @@ def split_data(args):
         if (not os.path.exists(str_img)) or (not os.path.exists(str_seg)):
             continue
 
-        files.append({"image": str_img, "label": str_seg})
+        files.append({"image": str_img, "label": str_seg, 'image_name': str_img, 'label_name': str_seg})
     val_files = copy.deepcopy(files)
 
     files = []
@@ -199,6 +199,6 @@ def split_data(args):
         if (not os.path.exists(str_img)) or (not os.path.exists(str_seg)):
             continue
 
-        files.append({"image": str_img, "label": str_seg})
+        files.append({"image": str_img, "label": str_seg, 'image_name': str_img, 'label_name': str_seg})
     test_files = copy.deepcopy(files)
     return train_files, val_files, test_files

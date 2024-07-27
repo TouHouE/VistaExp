@@ -18,14 +18,16 @@ from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 from accelerate.utils import find_executable_batch_size
 from icecream import ic
+import wandb
 
 from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
 from utils import model_input as ModelInputer
 from utils import terminate as Terminate
-import wandb
+from utils.decorator import show_exception_file
 
 
-def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: torch.Tensor, model, optimizer, scaler, image_only, loss_func, args):
+@show_exception_file
+def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: torch.Tensor, model, optimizer, scaler, image_only, loss_func, args, batch_pack):
     """
 
     :param slice_ids:type np.ndarray: contains which index at slice-axis
@@ -40,6 +42,7 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
     :return:
     """
     slice_iter_loss = torch.as_tensor(.0).cuda(args.rank)
+    do_vae = args.vae
 
     for slice_idx in slice_ids:
         inputs, labels = inputs_l[slice_idx].unsqueeze(dim=0), labels_l[slice_idx].unsqueeze(dim=0)
@@ -57,7 +60,10 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
         else:
             # ic(outputs[0]['low_res_logits'].shape)
             # ic(target.shape)
-            loss = loss_func(outputs[0]['low_res_logits'].permute(1, 0, 2, 3).contiguous(), target) + .1 * outputs[0].get('vae_loss', torch.tensor(.0).cuda(args.rank))
+            loss = loss_func(outputs[0]['low_res_logits'].permute(1, 0, 2, 3).contiguous(), target)
+            if do_vae:
+                loss += .1 * outputs[0]['vae_loss']
+
 
         loss *= .0 if skip else 1.
         if args.amp:
@@ -102,7 +108,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
             random_ids = torch.from_numpy(np.random.choice(inputs_l.shape[0], size=bs_size, replace=False))
 
         _loss = iter_slice_patch(
-            random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args
+            random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args, batch_data
         )
 
         if args.distributed:
