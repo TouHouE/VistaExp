@@ -17,6 +17,7 @@ from monai import transforms as MF
 from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 from accelerate.utils import find_executable_batch_size
+from icecream import ic
 
 from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
 from utils import model_input as ModelInputer
@@ -41,7 +42,9 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
     slice_iter_loss = torch.as_tensor(.0).cuda(args.rank)
 
     for slice_idx in slice_ids:
-        inputs, labels = inputs_l[slice_idx], labels_l[slice_idx]
+        inputs, labels = inputs_l[slice_idx].unsqueeze(dim=0), labels_l[slice_idx].unsqueeze(dim=0)
+        ic(inputs.shape)
+        ic(labels.shape)
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
             inputs.cuda(args.rank), labels.cuda(args.rank), args, model
         )
@@ -52,7 +55,9 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
         if image_only:
             loss = outputs[0]['vae_loss']
         else:
-            loss = loss_func(outputs[0]['low_res_logits'], target) + .1 * outputs[0]['vae_loss']
+            # ic(outputs[0]['low_res_logits'].shape)
+            # ic(target.shape)
+            loss = loss_func(outputs[0]['low_res_logits'].permute(1, 0, 2, 3).contiguous(), target) + .1 * outputs[0].get('vae_loss', torch.tensor(.0).cuda(args.rank))
 
         loss *= .0 if skip else 1.
         if args.amp:
@@ -87,8 +92,9 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
         # Remove original batch_size and the channel axes. Then swap the slice-axis at first
         labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
         # Only image need padding for make sure its shape is same as original shape.
-        inputs_l = F.pad(inputs_l, pd, "constant", 0)
-        inputs_l = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(3, 2, 0, 1).contiguous()
+        inputs_l = F.pad(inputs_l, pd, "constant", 0)        
+        inputs_l = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()
+        ic(inputs_l.shape)
 
         if (bs_size := args.num_patch) >= (num_group := inputs_l.shape[0]):
             random_ids = torch.arange(num_group)
