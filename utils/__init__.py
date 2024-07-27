@@ -23,6 +23,7 @@ def get_args():
                         help='setting this into monai.metrics.DiceMetrics\'s include_background argument')
 
 
+
     parser.add_argument("--checkpoint", default=None, help="start training from saved checkpoint")
     parser.add_argument("--logdir", default="vista2pt5d", type=str, help="directory to save the tensorboard logs")
     parser.add_argument("--data_dir", default="/dataset/dataset0/", type=str, help="dataset directory")

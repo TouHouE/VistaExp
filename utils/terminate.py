@@ -76,3 +76,22 @@ def show_training_info(epoch, idx, len_loader, avg_run_loss, start_time, args):
         "loss: {:.4f}".format(avg_run_loss),
         "time {:.2f}s".format(time.time() - start_time),
     )
+
+
+def show_some_hyper(args):
+    if args.rank != 0:
+        return
+    info = dict()
+    info['nc'] = args.nc
+    info['dataset_type'] = args.dataset_type
+    info['eval_bg'] = args.eval_bg
+    info['roi_z_iter'] = args.roi_z_iter
+    info['fold'] = args.fold
+    info['num_patch'] = args.num_patch
+    info['num_patch_val'] = args.num_patch_val
+    string_length = min(max(len(key)for key in info.keys()), 30)
+    print(f'Hyper Hint\n')
+    for key, value in info.items():
+        print(f'{key:{string_length}}: {value}')
+    return
+

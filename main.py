@@ -90,11 +90,10 @@ def main_worker(gpu, args):
 
     post_label = AsDiscrete(to_onehot=args.nc)
     post_pred = Compose([Activations(sigmoid=True), AsDiscrete(threshold=0.5)])
-    dice_acc = DiceMetric(include_background=False, reduction=MetricReduction.MEAN, get_not_nans=True)
+    dice_acc = DiceMetric(include_background=args.eval_bg, reduction=MetricReduction.MEAN, get_not_nans=True)
 
     Terminator.show_model_info(model, args)
-    pytorch_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print("Total trainable parameters count", pytorch_total_params * 1.0e-6, "M")
+    Terminator.show_some_hyper(args)
 
     best_acc = 0
     start_epoch = 0
