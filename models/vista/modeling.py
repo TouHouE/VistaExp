@@ -23,6 +23,7 @@ import monai
 import torch
 from torch import nn
 from torch.nn import functional as F
+from icecream import ic
 
 from models.sam import TwoWayTransformer, MaskDecoder
 from models.vae import VAEDecoder
@@ -261,10 +262,12 @@ class Vista2pt5D(nn.Module):
         @param is_input: `True` for image, `False` for supervised-mask
         @return:  (B, z_roi * 3, sam_H, sam_W) for image or (B, NC, sam_H / 4, sam_W / 4) for supervised-mask
         """
+        ic(x.shape)
         if is_input:
             _channel = GetChannel(x.shape)
             if _channel == 1:
                 x = (x.squeeze(0) * 255.0 - self.pixel_mean) / self.pixel_std
+                ic(x.shape)
                 x = x.unsqueeze(0)
             else:
                 mp, ms = self.pixel_mean, self.pixel_std
