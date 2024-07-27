@@ -167,7 +167,7 @@ def prepare_sam_training_input(inputs: torch.Tensor, labels: torch.Tensor, args:
         batch_labels_ = torch.stack(buf_labels, dim=1).float()
     else:
         batch_labels_ = torch.stack(buf_labels, dim=1).float()
-    ic(batch_labels_.shape)
+    # ic(batch_labels_.shape)
     # The shape will become (B, NC, sam_H / 4, sam_W / 4)
     if args.distributed:
         batch_labels = model.module.preprocess(batch_labels_, is_input=False)

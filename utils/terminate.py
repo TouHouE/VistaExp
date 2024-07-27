@@ -53,12 +53,18 @@ def show_model_info(model, args):
         if sub_module.get(key, None) is None:
             sub_module[key] = list()
         sub_module[key].append(module_param.numel())
-
+    print(f'=' * 43)
     print(f'|{"Module Name":^20}|{"Size(MB)":^20}|')
     print(f'|{"-" * 20}|{"-" * 20}|')
+    tot_size = .0
     for mname, param_list in sub_module.items():
         size = f'{sum(param_list) * 1e-6:^.4f}'
+        tot_size += sum(param_list)
         print(f'|{mname:^20}|{size:^20}|')
+    print(f'|{"-" * 41}|')
+    info = f'Total size: {tot_size * 1e-6:.4f}'
+    print(f'|{info:41}|')
+    print(f'=' * 43)
     return
 
 

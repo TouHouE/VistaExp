@@ -43,8 +43,8 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
 
     for slice_idx in slice_ids:
         inputs, labels = inputs_l[slice_idx].unsqueeze(dim=0), labels_l[slice_idx].unsqueeze(dim=0)
-        ic(inputs.shape)
-        ic(labels.shape)
+        # ic(inputs.shape)
+        # ic(labels.shape)
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
             inputs.cuda(args.rank), labels.cuda(args.rank), args, model
         )
@@ -94,7 +94,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
         # Only image need padding for make sure its shape is same as original shape.
         inputs_l = F.pad(inputs_l, pd, "constant", 0)        
         inputs_l = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()
-        ic(inputs_l.shape)
+        # ic(inputs_l.shape)
 
         if (bs_size := args.num_patch) >= (num_group := inputs_l.shape[0]):
             random_ids = torch.arange(num_group)

@@ -19,6 +19,8 @@ def get_args():
     parser.add_argument('--quasi_batch_size', type=int)
     parser.add_argument('--num_aug', type=int, default=0)
     parser.add_argument('--poor_mode', action='store_true', default=False)
+    parser.add_argument('--eval_bg', action='store_true', default=False,
+                        help='setting this into monai.metrics.DiceMetrics\'s include_background argument')
 
 
     parser.add_argument("--checkpoint", default=None, help="start training from saved checkpoint")
