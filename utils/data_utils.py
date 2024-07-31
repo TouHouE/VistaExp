@@ -52,7 +52,7 @@ def get_ds(args, phase, datalist, transform) -> data.Dataset | data.CacheDataset
             )
             return ds
         else:
-            dataset_type = 'cache'
+            dataset_type = 'persis' if args.poor_mode else 'cache'
 
     if args.distributed:
         datalist = data.partition_dataset(
@@ -67,13 +67,13 @@ def get_ds(args, phase, datalist, transform) -> data.Dataset | data.CacheDataset
             datalist,
             transform=transform,
             cache_rate=1,
-            num_workers=args.workers
+            num_workers=args.workers,
         )
     elif dataset_type == 'persis':
         ds = data.PersistentDataset(
             datalist,
             transform=transform,
-            cache_dir=f'./cache/{phase}'
+            cache_dir=os.path.join(args.cache, phase)
         )
     else:
         raise NotImplementedError(f'Dataset type: {dataset_type} not implement.')

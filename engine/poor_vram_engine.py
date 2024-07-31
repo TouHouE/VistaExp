@@ -105,7 +105,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
         if (bs_size := args.num_patch) >= (num_group := inputs_l.shape[0]):
             random_ids = torch.arange(num_group)
         else:
-            random_ids = torch.from_numpy(np.random.choice(inputs_l.shape[0], size=bs_size, replace=False))
+            random_ids = torch.from_numpy(np.random.choice(num_group, size=bs_size, replace=False))
 
         _loss = iter_slice_patch(
             random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args, batch_data
@@ -220,7 +220,11 @@ def train_epoch_iterative(model, loader, optimizer, scaler, epoch, loss_func, ru
                     pred_mask = torch.cat([_out['low_res_logits'] for _out in outputs], dim=1)
                     pred_mask = pred_mask.permute(1, 0, 2, 3).contiguous()
                     loss += loss_func(pred_mask, target)
-                    vae_loss = torch.sum(*[_out.get('vae_loss', torch.tensor(.0).cuda(args.rank)) for _out in outputs])
+                    vae_loss = .0
+                    if 'vae_loss' in outputs[0]:
+                        for _out in outputs:
+                            vae_loss += _out['vae_loss']
+
                     loss += .1 * vae_loss
 
                     if i == args.num_iterative_step - 1:

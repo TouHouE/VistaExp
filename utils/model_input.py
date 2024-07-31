@@ -9,6 +9,7 @@ from monai.data import MetaTensor
 from icecream import ic
 
 from models.vista.modeling import Vista2pt5D
+from utils import assign_device, get_unique_labels
 
 
 def apply_coords_torch(coords, original_size, sam_image_size) -> np.ndarray:
@@ -110,24 +111,23 @@ def generate_point_prompt(batch_labels_, args, points_pos=None, points_neg=None,
 def prepare_sam_training_input(inputs: torch.Tensor, labels: torch.Tensor, args: Namespace, model: Type[Vista2pt5D]):
     """
 
-    @param inputs: (B) roi_z x H x W
-    @param labels: (B) H x W
+    @param inputs: B x roi_z x H x W
+    @param labels: B x H x W
     @param args:
     @param model:
     @return:
     """
+    ic(inputs.shape)
+    ic(labels.shape)
     # breakpoint()
     # Shape with Nc
     unique_labels: torch.Tensor | MetaTensor = torch.unique(labels)
-    if hasattr(unique_labels, 'as_tensor'):
-        unique_labels: torch.LongTensor = unique_labels.as_tensor().long()
-    else:
-        unique_labels: torch.LongTensor = unique_labels.long()
+    unique_labels: torch.LongTensor = get_unique_labels(unique_labels)
 
     nc_in_mask: int = len(unique_labels)
     if args.skip_bk:
         unique_labels: torch.LongTensor = unique_labels[1:]
-
+    # Only possible when background was skipped.
     if nc_in_mask == 0:
         prepared_input = list()
         for batch_idx, (_inputs, _labels) in enumerate(zip(inputs, labels)):
@@ -143,38 +143,38 @@ def prepare_sam_training_input(inputs: torch.Tensor, labels: torch.Tensor, args:
     # random sample args.num_prompt prompts, this will help to manage the GPU memory upper bound.
     if nc_in_mask > args.num_prompt:
         # random some category in nc_in_mask
-        idxs: int = random.sample(range(nc_in_mask), args.num_prompt)
-        idxs: torch.Tensor = torch.tensor(idxs)
+        idxs = torch.from_numpy(np.random.choice(nc_in_mask, args.num_prompt).astype(np.int32))
         unique_labels: torch.LongTensor = unique_labels[idxs]
 
+    ic(unique_labels.shape)
     if len(unique_labels) < args.num_prompt:
+
         # Cat unique_labels into unique_labels until the size of nc_in_mask(not unique now) >= num_prompt
         while len(unique_labels) < args.num_prompt:
-            unique_labels: torch.LongTensor = torch.cat([unique_labels, unique_labels], 0).long()
+            double_labels = [unique_labels] * 2
+            # Let the shape at least greater than num_prompt
+            unique_labels = torch.cat(double_labels, 0).long()
         # make sure size of unique_labels == num_prompt
+        # The shape become [num_prompt]
         unique_labels = unique_labels[: args.num_prompt]
 
     # add 4 background labels to every batch
-    # The background labels is meaning
+    # The background labels is meaning: missing label in current labels.
     background_labels = list(set(range(1, args.nc)) - set(unique_labels.cpu().numpy()))
     random.shuffle(background_labels)
-    unique_labels: torch.LongTensor = torch.cat([unique_labels, torch.tensor(background_labels[:4]).cuda(args.rank)]).long()
+    candidate_tensor = [unique_labels, assign_device(torch.tensor(background_labels[:4]), args.rank)]
+    unique_labels: torch.LongTensor = torch.cat(candidate_tensor).long()
 
     # preprocess make the size of label same as low_res_logit
-    # The shape is (B, Nc, H, W)
+    # The shape is (B, num_prompt, H, W)
     buf_labels = [labels == unique_labels[i] for i in range(len(unique_labels))]
-    if args.poor_mode:
-        batch_labels_ = torch.stack(buf_labels, dim=1).float()
-    else:
-        batch_labels_ = torch.stack(buf_labels, dim=1).float()
-    # ic(batch_labels_.shape)
-    # The shape will become (B, NC, sam_H / 4, sam_W / 4)
+    batch_labels_ = torch.stack(buf_labels, dim=1).float()
+
+    # The shape will become (B, num_prompt, sam_H / 4, sam_W / 4)
     if args.distributed:
         batch_labels = model.module.preprocess(batch_labels_, is_input=False)
     else:
         batch_labels = model.preprocess(batch_labels_, is_input=False)
-
-    # TODO: we currently only use class-label and points prompt.
 
     prepared_input = list()
     for batch_idx, (_inputs, _labels, _batch_labels_) in enumerate(zip(inputs, labels, batch_labels_)):
@@ -198,7 +198,7 @@ def prepare_sam_training_input(inputs: torch.Tensor, labels: torch.Tensor, args:
             if random.uniform(0, 1) < args.drop_point_prob:
                 prepared_input[batch_idx].pop('point_coords')
                 prepared_input[batch_idx].pop('point_labels')
-    return prepared_input, batch_labels.cuda(args.rank), batch_labels_, False
+    return prepared_input, assign_device(batch_labels, args.rank), batch_labels_, False
 
 
 def prepare_sam_test_input(inputs, labels, args, previous_pred=None):

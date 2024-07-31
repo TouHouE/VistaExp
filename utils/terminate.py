@@ -83,14 +83,16 @@ def show_some_hyper(args):
         return
     info = dict()
     info['nc'] = args.nc
+    info['logdir'] = args.logdir
     info['dataset_type'] = args.dataset_type
     info['eval_bg'] = args.eval_bg
     info['roi_z_iter'] = args.roi_z_iter
     info['fold'] = args.fold
     info['num_patch'] = args.num_patch
     info['num_patch_val'] = args.num_patch_val
+    info['loss_func'] = args.loss_func
     string_length = min(max(len(key)for key in info.keys()), 30)
-    print(f'Hyper Hint\n')
+    print(f'Hyper Hint: ')
     for key, value in info.items():
         print(f'{key:{string_length}}: {value}')
     return

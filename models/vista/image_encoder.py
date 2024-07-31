@@ -85,7 +85,7 @@ class VistaImageEncoderViT(ImageEncoderViT):
         self.img_size = img_size
 
         if in_chans > 3 and patch_embed_3d:
-            print("ImageEncoderViT: Using 3D PatchEmbed")
+            print(f"ImageEncoderViT: Using 3D PatchEmbed | in_chans: {in_chans}, patch_embed_3d: {patch_embed_3d}")
             self.patch_embed = PatchEmbed2pt5D(
                 kernel_size=(patch_size, patch_size, in_chans // 3),
                 stride=(patch_size, patch_size, in_chans // 3),
@@ -93,6 +93,7 @@ class VistaImageEncoderViT(ImageEncoderViT):
                 embed_dim=embed_dim,
             )
         else:
+            print(f'ImageEncoderViT: Using original PatchEmbed | in_chans: {in_chans}, patch_embed_3d: {patch_embed_3d}')
             self.patch_embed = PatchEmbed(
                 kernel_size=(patch_size, patch_size),
                 stride=(patch_size, patch_size),

@@ -1,5 +1,20 @@
 import warnings, argparse
 
+import torch
+
+
+def get_unique_labels(unique_labels) -> torch.LongTensor:
+    if hasattr(unique_labels, 'as_tensor'):
+        return unique_labels.as_tensor().long()
+    return unique_labels.long()
+
+
+def assign_device(objected, device) -> torch.Tensor:
+    if isinstance(device, str):
+        if device == 'cpu':
+            return objected.cpu()
+    return objected.cuda(device)
+
 
 def get_args():
     warnings.filterwarnings("ignore", category=UserWarning, module="monai")

@@ -33,7 +33,7 @@ from utils.data_utils import get_loader
 from utils import get_args
 from models import vista_model_registry
 from utils import terminate as Terminator
-
+from utils import asker as Asker
 
 def start_tb(log_dir):
     cmd = ["tensorboard", "--logdir", log_dir]
@@ -43,7 +43,8 @@ def start_tb(log_dir):
 def main():
     args = get_args()
     args.amp = not args.noamp
-    args.logdir = "./runs/" + args.logdir
+    args.logdir = Asker.ask_logdir_root(args)
+    args.cache = Asker.ask_cache_root(args)
 
     if args.seed > -1:
         set_determinism(seed=args.seed)
