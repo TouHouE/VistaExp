@@ -43,7 +43,7 @@ def start_tb(log_dir):
 def main():
     args = get_args()
     args.amp = not args.noamp
-    args.logdir = "./runs/" + args.logdir
+    args.logdir = "/home/sdb_data/vista-exp/" + args.logdir
 
     if args.seed > -1:
         set_determinism(seed=args.seed)
