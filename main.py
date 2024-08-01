@@ -26,6 +26,8 @@ from monai.metrics import DiceMetric
 from monai.transforms import Activations, AsDiscrete, Compose
 from monai.utils import set_determinism
 from monai.utils.enums import MetricReduction
+from icecream import ic
+
 from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from engine import builtin_engine as NormEngine
 from engine import poor_vram_engine as PoorEngine
@@ -35,6 +37,7 @@ from models import vista_model_registry
 from utils import terminate as Terminator
 from utils import asker as Asker
 
+
 def start_tb(log_dir):
     cmd = ["tensorboard", "--logdir", log_dir]
     Popen(cmd, stderr=sys.stderr, stdout=sys.stdout, shell=False)
@@ -42,6 +45,8 @@ def start_tb(log_dir):
 
 def main():
     args = get_args()
+    if not args.test_mode:
+        ic.disable()
     args.amp = not args.noamp
     args.logdir = Asker.ask_logdir_root(args)
     args.cache = Asker.ask_cache_root(args)
