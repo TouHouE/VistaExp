@@ -59,15 +59,30 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
             param.grad = None
         with autocast(enabled=args.amp):
             outputs = model(data, is_train=True)
-        if image_only:
+        if image_only:  # Only reconstruct loss exist.
             loss = outputs[0]['vae_loss']
+
+            if pseudo_bs > 1:
+                loss /= pseudo_bs
+                for pack in outputs[1:]:
+                    loss += pack['vae_loss'] / pseudo_bs
+
         else:
             # ic(outputs[0]['low_res_logits'].shape)
             # ic(target.shape)
-            loss = loss_func(outputs[0]['low_res_logits'].permute(1, 0, 2, 3).contiguous(), target)
-            if do_vae:
-                loss += .1 * outputs[0]['vae_loss']
+            if pseudo_bs > 1:
+                pred_mask = torch.cat([_pack['low_res_logits'].permute(1, 0, 2, 3) for _pack in outputs], dim=0)
+                loss = loss_func(pred_mask, target)
+            else:
+                loss = loss_func(outputs[0]['low_res_logits'].permute(1, 0, 2, 3).contiguous(), target)
 
+            if do_vae and pseudo_bs > 1:
+                for pack in outputs:
+                    loss += .1 * (pack['vae_loss'] / pseudo_bs)
+            elif do_vae and pseudo_bs == 1:
+                loss += .1 * outputs[0]['vae_loss']
+            else:
+                pass
 
         loss *= .0 if skip else 1.
         if args.amp:
