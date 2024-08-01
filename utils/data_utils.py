@@ -83,6 +83,10 @@ def get_ds(args, phase, datalist, transform) -> data.Dataset | data.CacheDataset
 def get_loader(args):
     train_files, val_files, test_files = split_data(args)
     random_transforms = get_transforms(args)
+    resizer = MF.ResizeWithPadOrCropd(keys=['image', 'label'], spatial_size=(512, 512, 320), allow_missing_keys=True)
+    if args.poor_mode:
+        print(f'Resizer change from {resizer} with {resizer.padder.padder.spatial_size} => Identity')
+        resizer = MF.Identityd(keys=['image', 'label'], allow_missing_keys=True)
 
     train_transform = transforms.Compose(
         [
@@ -90,7 +94,7 @@ def get_loader(args):
             EnsureChannelFirstd(keys=["image", "label"], allow_missing_keys=True),
             Orientationd(keys=["image", "label"], axcodes="RAS", allow_missing_keys=True),
             Spacingd(keys=["image", "label"], pixdim=args.pixdim, mode=("bilinear", "nearest"), allow_missing_keys=True),
-            MF.ResizeWithPadOrCropd(keys=['image', 'label'], spatial_size=(512, 512, 320), allow_missing_keys=True),
+            resizer,
             ScaleIntensityRanged(
                 keys=["image"], a_min=args.a_min, a_max=args.a_max, b_min=args.b_min, b_max=args.b_max, clip=True
             ),
@@ -104,7 +108,7 @@ def get_loader(args):
             EnsureChannelFirstd(keys=["image", "label"], allow_missing_keys=True),
             Orientationd(keys=["image", "label"], axcodes="RAS", allow_missing_keys=True),
             Spacingd(keys=["image", "label"], pixdim=args.pixdim, mode=("bilinear", "nearest"), allow_missing_keys=True),
-            MF.ResizeWithPadOrCropd(keys=['image', 'label'], spatial_size=(512, 512, 320), allow_missing_keys=True),
+            resizer,
             ScaleIntensityRanged(
                 keys=["image"], a_min=args.a_min, a_max=args.a_max, b_min=args.b_min, b_max=args.b_max, clip=True
             ),
