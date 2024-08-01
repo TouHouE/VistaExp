@@ -49,7 +49,7 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
     for start_idx in range(0, tot_slice, pseudo_bs):
         slice_idx = slice_ids[start_idx: start_idx + pseudo_bs]
 
-        inputs, labels = inputs_l[slice_idx].unsqueeze(dim=0), labels_l[slice_idx].unsqueeze(dim=0)
+        inputs, labels = inputs_l[slice_idx], labels_l[slice_idx]
         # ic(inputs.shape)
         # ic(labels.shape)
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
