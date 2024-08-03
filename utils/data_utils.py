@@ -167,6 +167,11 @@ def split_data(args):
             list_valid = list_train[-l:]
             list_train = list_train[:-l]
 
+    if args.test_mode:
+        list_train = list_train[:2]
+        list_valid = list_valid[:2]
+        list_test = list_test[:2]
+
     if hasattr(args, "rank") and args.rank == 0:
         # print("train files", len(list_train), [os.path.basename(_["image"]).split(".")[0] for _ in list_train])
         # print("val files", len(list_valid), [os.path.basename(_["image"]).split(".")[0] for _ in list_valid])
