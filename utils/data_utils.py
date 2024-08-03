@@ -90,7 +90,7 @@ def get_loader(args):
             keys=['image', 'label'], allow_missing_keys=True,
             spatial_size=(args.sam_image_size, args.sam_image_size, -1), mode='minimum'
         )
-        print(f'{resizer.spatial_size}')
+        print(f'{resizer.get_transform_info()} with {resizer.padder.spatial_size}')
         # resizer = MF.Identityd(keys=['image', 'label'], allow_missing_keys=True)
 
     train_transform = transforms.Compose(
