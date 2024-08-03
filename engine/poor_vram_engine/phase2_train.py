@@ -62,7 +62,7 @@ def prompt_adjust_mask(image_embedding, data, target, target_original, model, lo
 def iter_slice_patch(
         slice_ids: torch.Tensor, inputs_l: torch.Tensor, labels_l: torch.Tensor,
         model, optimizer, scaler, image_only, loss_func,
-        args, batch_pack, **kwargs
+        args, **kwargs
 ):
     _loss = torch.tensor(0.0).cuda(args.rank)
     slice_iter_loss = torch.as_tensor(.0).cuda(args.rank)
@@ -117,7 +117,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args):
     for idx, batch_data in enumerate(loader):
         # only take 1 batch
         inputs_l = batch_data['image']
-        only_image = 'label' not in batch_data
+        image_only = 'label' not in batch_data
         labels_l: torch.Tensor = batch_data.get('label', torch.zeros_like(inputs_l))
         inputs_l = F.pad(inputs_l, pd, "constant", 0).squeeze()
         labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
@@ -127,7 +127,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args):
         random_ids = torch.from_numpy(np.random.choice(n_inputs_patch, size=ids_size, replace=False))
 
         _loss = iter_slice_patch(
-            random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args
+            random_ids, inputs_l, labels_l, model, optimizer, scaler, image_only, loss_func, args
         )
 
         _loss /= min(args.num_patch, n_inputs_patch)
