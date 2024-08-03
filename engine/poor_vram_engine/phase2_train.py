@@ -28,7 +28,7 @@ from utils.decorator import show_exception_file
 
 def prompt_adjust_mask(image_embedding, data, target, target_original: torch.Tensor, model, loss_func, args):
     loss = .0
-    for _ in range(args.num_iterative_step):
+    for iter_step_cnt in range(args.num_iterative_step):
         with autocast(enabled=args.amp):
             if args.distributed:
                 outputs = model.module.get_mask_prediction(data, image_embedding)

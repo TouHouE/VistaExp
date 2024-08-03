@@ -1,7 +1,7 @@
 from argparse import Namespace
 from copy import deepcopy
 import random
-from typing import Type
+from typing import Type, Optional
 
 import torch
 import numpy as np
@@ -44,9 +44,13 @@ def sample_points(labelpoints, n_points):
     return [labelpoints[idx]]
 
 
-def generate_point_prompt(batch_labels_, args, points_pos=None, points_neg=None, previous_pred=None):
+def generate_point_prompt(
+        batch_labels_, args,
+        points_pos: Optional[int] = None, points_neg: Optional[int] = None,
+        previous_pred: Optional[Type[torch.Tensor] | Type[MetaTensor]] = None
+):
     """
-
+    This method can only process one sample each time.
     @param batch_labels_:
     @param args:
     @param points_pos:
