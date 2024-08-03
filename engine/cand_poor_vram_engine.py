@@ -170,34 +170,25 @@ def train_epoch_iterative(model, loader, optimizer, scaler, epoch, loss_func, ru
     ])
     # we need to make sure the number of 2.5D input is an odd number.
     assert args.roi_z_iter % 2 == 1
+    n_slice = args.roi_z_iter
+    pd = (n_slice // 2, n_slice // 2)
+
     for idx, batch_data in enumerate(loader):
         # only take 1 batch
+        inputs_l = batch_data['image']
         only_image = 'label' not in batch_data
-        if args.batch_type == 'aug':
-            inputs_l = list()
-            labels_l = list()
-            for _ in range(args.quasi_batch):
-                _data = auger(batch_data["image"])
-                _image = _data['image']
-                inputs_l.append(_image)
-                labels_l.append(data.get('label', torch.zeros_like(_image)))
-            inputs_l = torch.cat(inputs_l, dim=0)
-            labels_l = torch.cat(labels_l, dim=0)
-        else:
-            inputs_l = batch_data['image']
-            labels_l = batch_data.get('label', torch.zeros_like(inputs_l))
-
-        # TODO: we only support batch_size = 1 for data loader.
+        labels_l: torch.Tensor = batch_data.get('label', torch.zeros_like(inputs_l))
         n_z_before_pad = labels_l.shape[-1]
+        inputs_l = F.pad(inputs_l, pd, "constant", 0).squeeze()
+        labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
+        inputs_patch = inputs_l.unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()
+        n_inputs_patch = inputs_patch.shape[0]
+        ids_size = min(args.num_patch, n_inputs_patch)
+        random_ids = torch.from_numpy(np.random.choice(n_inputs_patch, size=ids_size, replace=False))
 
-        n_slice = args.roi_z_iter
-        # pad the z direction, so we can easily extract 2.5D input and predict labels for the center slice
-        pd = (n_slice // 2, n_slice // 2)
-        inputs_l = F.pad(inputs_l, pd, "constant", 0)
-        labels_l = F.pad(labels_l, pd, "constant", 0)
         _loss = torch.tensor(0.0).cuda(args.rank)
 
-        for _k in range(min(args.num_patch, n_z_before_pad)):
+        for slice_idx in range(min(args.num_patch, n_z_before_pad)):
             # Return random integers from `low` (inclusive) to `high` (exclusive).
             start_idx = int(np.random.randint(low=n_slice // 2, high=(n_slice // 2 + n_z_before_pad)))
             left_ptr = start_idx - n_slice // 2
@@ -207,6 +198,9 @@ def train_epoch_iterative(model, loader, optimizer, scaler, epoch, loss_func, ru
 
             # we only need the label for the center slice
             labels = labels_l[..., left_ptr: right_ptr][..., n_slice // 2]
+            inputs = inputs_l[slice_idx]
+            labels = inputs_l[slice_idx]
+
 
             data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
                 inputs.cuda(args.rank), labels.cuda(args.rank), args, model

@@ -1,6 +1,7 @@
 import time
 
 import torch.nn
+import numpy as np
 
 
 def show_prob(args):
@@ -38,6 +39,18 @@ def show_valided_info(epoch, val_avg_acc, val_MA, best_epoch, val_acc_max, epoch
         "time {:.2f}s".format(time.time() - epoch_time),
     )
 
+def show_validing_info(epoch, run_acc_avg, idx, len_loader, start_time, args):
+    if args.rank != 0:
+        return
+    avg_acc = np.mean(run_acc_avg)
+    print(
+        "Val {}/{} {}/{}".format(epoch, args.max_epochs, idx + 1, len_loader),
+        "acc",
+        avg_acc,
+        "time {:.2f}s".format(time.time() - start_time),
+    )
+    return None
+
 
 @torch.no_grad()
 def show_model_info(model, args):
@@ -66,6 +79,8 @@ def show_model_info(model, args):
     print(f'|{info:41}|')
     print(f'=' * 43)
     return
+
+
 
 
 def show_training_info(epoch, idx, len_loader, avg_run_loss, start_time, args):
