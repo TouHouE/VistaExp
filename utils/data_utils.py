@@ -172,9 +172,9 @@ def split_data(args):
         
     if ic(args.test_mode):
 
-        list_train = list_train[:2]
-        list_valid = list_valid[:2]
-        list_test = list_test[:2]
+        list_train = list_train[:1]
+        list_valid = list_valid[:1]
+        list_test = list_test[:1]
 
     if hasattr(args, "rank") and args.rank == 0:
         # print("train files", len(list_train), [os.path.basename(_["image"]).split(".")[0] for _ in list_train])
