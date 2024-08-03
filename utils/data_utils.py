@@ -44,8 +44,8 @@ def get_transforms(args):
 
 def get_ds(args, phase, datalist, transform) -> data.Dataset | data.CacheDataset | data.PersistentDataset:
     dataset_type = args.dataset_type
-    if args.dataset_type == 'normal':
-        if phase == 'train':
+    if args.dataset_type == 'normal' or args.test_mode:
+        if phase == 'train' or args.test_mode:
             ds = data.Dataset(
                 datalist,
                 transform=transform

@@ -47,9 +47,9 @@ def main():
     args = get_args()
     if not args.test_mode:
         ic.disable()
+        args.logdir = Asker.ask_logdir_root(args)
+        args.cache = Asker.ask_cache_root(args)
     args.amp = not args.noamp
-    args.logdir = Asker.ask_logdir_root(args)
-    args.cache = Asker.ask_cache_root(args)
 
     if args.seed > -1:
         set_determinism(seed=args.seed)
