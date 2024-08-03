@@ -73,14 +73,14 @@ def generate_point_prompt(batch_labels_, args, points_pos=None, points_neg=None,
     # is selected randomly for the target mask
     _point = []
     _point_label = []
-    b, h, w = batch_labels_.shape
+    num_prompt, b, h, w = batch_labels_.shape
     device = batch_labels_.device
-    for i in range(b):
-        plabels = batch_labels_[i, ...]
+    for prompt_idx in range(num_prompt):
+        plabels = batch_labels_[prompt_idx, ...]
         nlabels = (plabels == 0.0).float()
         if previous_pred is not None:
-            ppred = previous_pred[i, 0, ...]
-            npred = (previous_pred[i, 0, ...] == 0.0).float()
+            ppred = previous_pred[prompt_idx, ...]
+            npred = (previous_pred[prompt_idx, ...] == 0.0).float()
 
             # False positive mask (pixels that are predicted as positive but are actually negative)
             fp_mask = torch.logical_and(nlabels, ppred)
@@ -112,9 +112,11 @@ def generate_point_prompt(batch_labels_, args, points_pos=None, points_neg=None,
                 device
             )
         )
-
+    ic(_point[0].shape)
     point = torch.stack(_point)
+    ic(point.shape)
     point_label = torch.stack(_point_label)
+    ic(point_label.shape)
     point_coords = apply_coords_torch(point, max(h, w), args.sam_image_size)
 
     return point_coords, point_label
