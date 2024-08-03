@@ -45,6 +45,8 @@ def prompt_adjust_mask(image_embedding, data, target, target_original, model, lo
             previous_point_labels.append(data[i].get('point_labels', None))
             previous_point_coords.append(data[i].get('point_coords', None))
         previous_pred = torch.cat([F.sigmoid(_out['high_res_logits'].detach()) > .5 for _out in outputs], dim=1).float()
+        ic(previous_pred.shape)
+        ic(target_original.shape)
         point_coords, point_labels = ModelInputer.generate_point_prompt(
             target_original, args=args, points_pos=1, points_neg=1, previous_pred=previous_pred
         )
@@ -123,13 +125,15 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args):
         labels_l: torch.Tensor = batch_data.get('label', torch.zeros_like(inputs_l))
         inputs_l = F.pad(inputs_l, pd, "constant", 0).squeeze()
         labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
-        inputs_patch = inputs_l.unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()
+        inputs_patch = inputs_l.unfold(-1, n_slice, 1)
+        ic(inputs_patch.shape)
+        inputs_patch = inputs_patch.permute(2, 3, 0, 1).contiguous()
         n_inputs_patch = inputs_patch.shape[0]
         ids_size = min(args.num_patch, n_inputs_patch)
         random_ids = torch.from_numpy(np.random.choice(n_inputs_patch, size=ids_size, replace=False))
 
         _loss = iter_slice_patch(
-            random_ids, inputs_l, labels_l, model, optimizer, scaler, image_only, loss_func, args
+            random_ids, inputs_patch, labels_l, model, optimizer, scaler, image_only, loss_func, args
         )
 
         _loss /= min(args.num_patch, n_inputs_patch)
