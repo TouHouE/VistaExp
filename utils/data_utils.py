@@ -26,6 +26,7 @@ from monai.transforms import (
     Spacingd,
 )
 from monai import transforms as MF
+from icecream import ic
 
 
 def get_transforms(args):
@@ -138,6 +139,7 @@ def get_loader(args):
 
 
 def split_data(args):
+    ic(args)
     data_dir = args.data_dir
     import json
 
@@ -167,8 +169,9 @@ def split_data(args):
             l = int((len(list_train) + len(list_valid)) * args.splitval)
             list_valid = list_train[-l:]
             list_train = list_train[:-l]
+        
+    if ic(args.test_mode):
 
-    if args.test_mode:
         list_train = list_train[:2]
         list_valid = list_valid[:2]
         list_test = list_test[:2]

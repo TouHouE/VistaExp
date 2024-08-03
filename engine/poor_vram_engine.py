@@ -46,7 +46,7 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
     do_vae = args.vae
     pseudo_bs = args.quasi_batch_size
     seq_slice_ids = slice_ids.split(pseudo_bs)
-    step_cnt = kwargs.get('step_cnt')
+    step_cnt = kwargs.get('step_cnt', 0)
 
     for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
         # slice_idx = slice_ids[start_idx: start_idx + pseudo_bs]
