@@ -26,7 +26,7 @@ from utils import terminate as Terminate
 from utils.decorator import show_exception_file
 
 
-def prompt_adjust_mask(image_embedding, data, target, target_original, model, loss_func, args):
+def prompt_adjust_mask(image_embedding, data, target, target_original: torch.Tensor, model, loss_func, args):
     loss = .0
     for _ in range(args.num_iterative_step):
         with autocast(enabled=args.amp):
@@ -47,9 +47,15 @@ def prompt_adjust_mask(image_embedding, data, target, target_original, model, lo
         previous_pred = torch.cat([F.sigmoid(_out['high_res_logits'].detach()) > .5 for _out in outputs], dim=1).float()
         ic(previous_pred.shape)
         ic(target_original.shape)
-        point_coords, point_labels = ModelInputer.generate_point_prompt(
-            target_original, args=args, points_pos=1, points_neg=1, previous_pred=previous_pred
-        )
+        point_coords = list()
+        point_labels = list()
+
+        for _target_original, _previous_pred in zip(target_original, previous_pred.permute(1, 0, 2, 3).contiguous()):
+            _point_coords, _point_labels = ModelInputer.generate_point_prompt(
+                _target_original, args=args, points_pos=1, points_neg=1, previous_pred=_previous_pred
+            )
+            point_labels.append(_point_labels)
+            point_coords.append(_point_coords)
 
         if previous_point_coords is not None:
             for i in range(len(data)):
