@@ -40,8 +40,8 @@ def prompt_adjust_mask(image_embedding, data, target, target_original: torch.Ten
         previous_point_coords = list()
         previous_point_labels = list()
 
-        for i, _out in enumerate(outputs):
-            data[i]["mask_inputs"] = _out["low_res_logits"].permute(1, 0, 2, 3).contiguous().detach()
+        for i, _out in enumerate(outputs):            
+            data[i]["mask_inputs"] = _out["low_res_logits"].detach()
             previous_point_labels.append(data[i].get('point_labels', None))
             previous_point_coords.append(data[i].get('point_coords', None))
         previous_pred = torch.cat([F.sigmoid(_out['high_res_logits'].detach()) > .5 for _out in outputs], dim=1).float()
@@ -56,15 +56,17 @@ def prompt_adjust_mask(image_embedding, data, target, target_original: torch.Ten
             )
             point_labels.append(_point_labels)
             point_coords.append(_point_coords)
+        ic(list(any(torch.isnan(_x.view(-1))) for _x in point_labels))
+        ic(list(any(torch.isnan(_x.view(-1))) for _x in point_coords))
 
-        if previous_point_coords is not None:
-            for i in range(len(data)):
-                data[i]['point_coords'] = torch.cat([previous_point_coords[i], point_coords[i]], dim=1)
-                data[i]['point_labels'] = torch.cat([previous_point_labels[i], point_labels[i]], dim=1)
-        else:
-            for i in range(len(data)):
-                data[i]['point_coords'] = point_coords[i]
-                data[i]['point_labels'] = point_labels[i]
+        for bidx in range(len(data)):
+            if previous_point_coords[bidx] is None:
+                data[bidx]['point_coords'] = point_coords[bidx]
+                data[bidx]['point_labels'] = point_labels[bidx]
+            else:
+                data[bidx]['point_coords'] = torch.cat([previous_point_coords[bidx], point_coords[bidx]], dim=1)
+                data[bidx]['point_labels'] = torch.cat([previous_point_labels[bidx], point_labels[bidx]], dim=1)
+    
     return loss
 
 
