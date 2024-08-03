@@ -21,7 +21,7 @@ from icecream import ic
 import wandb
 
 from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
-from utils import model_input as ModelInputer
+from utils import model_input as ModelInputer, assign_device
 from utils import terminate as Terminate
 from utils.decorator import show_exception_file
 
@@ -59,19 +59,21 @@ def prompt_adjust_mask(image_embedding, data, target, target_original, model, lo
                 data[i]['point_labels'] = point_labels[i]
     return loss
 
+
 def iter_slice_patch(
         slice_ids: torch.Tensor, inputs_l: torch.Tensor, labels_l: torch.Tensor,
         model, optimizer, scaler, image_only, loss_func,
         args, **kwargs
 ):
-    _loss = torch.tensor(0.0).cuda(args.rank)
-    slice_iter_loss = torch.as_tensor(.0).cuda(args.rank)
+    _loss = assign_device(torch.tensor(0.0), args.rank)
     do_vae = args.vae
     pseudo_bs = args.quasi_batch_size
     seq_slice_ids = slice_ids.split(pseudo_bs)
 
     for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
         inputs, labels = inputs_l[slice_idx], labels_l[slice_idx]
+        ic(inputs.shape)
+        ic(labels.shape)
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
             inputs.cuda(args.rank), labels.cuda(args.rank), args, model
         )
