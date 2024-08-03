@@ -85,11 +85,12 @@ def get_loader(args):
     random_transforms = get_transforms(args)
     resizer = MF.ResizeWithPadOrCropd(keys=['image', 'label'], spatial_size=(args.sam_image_size, args.sam_image_size, 320), allow_missing_keys=True)
     if args.poor_mode:
+        print(f'Resizer change from {resizer.get_transform_info()} with {resizer.padder.padder.spatial_size}', end=' => ')
         resizer = MF.SpatialPadd(
             keys=['image', 'label'], allow_missing_keys=True,
             spatial_size=(args.sam_image_size, args.sam_image_size, -1), mode='minimum'
         )
-        print(f'Resizer change from {resizer.get_transform_info()} with {resizer.padder.padder.spatial_size} => {resizer.spatial_size}')
+        print(f'{resizer.spatial_size}')
         # resizer = MF.Identityd(keys=['image', 'label'], allow_missing_keys=True)
 
     train_transform = transforms.Compose(
