@@ -12,6 +12,18 @@ from models.vista.modeling import Vista2pt5D
 from utils import assign_device, get_unique_labels
 
 
+def find_possible(args, get_down=False):
+    n_patch = args.num_patch
+    qbs = args.quasi_batch_size
+    dif = n_patch % qbs
+    if dif == 0:
+        return qbs
+    if get_down:
+        return n_patch // (n_patch // qbs)
+
+    return qbs + dif
+
+
 def apply_coords_torch(coords, original_size, sam_image_size) -> np.ndarray:
     """
     Expects a numpy array of length 2 in the final dimension. Requires the

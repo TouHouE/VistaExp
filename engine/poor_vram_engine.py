@@ -27,7 +27,7 @@ from utils.decorator import show_exception_file
 
 
 @show_exception_file
-def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: torch.Tensor, model, optimizer, scaler, image_only, loss_func, args, batch_pack):
+def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: torch.Tensor, model, optimizer, scaler, image_only, loss_func, args, batch_pack, **kwargs):
     """
 
     :param slice_ids:type np.ndarray: contains which index at slice-axis
@@ -42,13 +42,15 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
     :return:
     """
     slice_iter_loss = torch.as_tensor(.0).cuda(args.rank)
+
     do_vae = args.vae
-    tot_slice = len(slice_ids)
     pseudo_bs = args.quasi_batch_size
+    seq_slice_ids = slice_ids.split(0, pseudo_bs)
+    step_cnt = kwargs.get('step_cnt')
 
-    for start_idx in range(0, tot_slice, pseudo_bs):
-        slice_idx = slice_ids[start_idx: start_idx + pseudo_bs]
-
+    for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
+        # slice_idx = slice_ids[start_idx: start_idx + pseudo_bs]
+        step_cnt += adpt_pseudo_bs
         inputs, labels = inputs_l[slice_idx], labels_l[slice_idx]
         # ic(inputs.shape)
         # ic(labels.shape)
@@ -63,23 +65,23 @@ def iter_slice_patch(slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: to
             loss = outputs[0]['vae_loss']
 
             if pseudo_bs > 1:
-                loss /= pseudo_bs
+                loss /= adpt_pseudo_bs
                 for pack in outputs[1:]:
-                    loss += pack['vae_loss'] / pseudo_bs
+                    loss += pack['vae_loss'] / adpt_pseudo_bs
 
         else:
             # ic(outputs[0]['low_res_logits'].shape)
             # ic(target.shape)
-            if pseudo_bs > 1:
+            if adpt_pseudo_bs > 1:
                 pred_mask = torch.cat([_pack['low_res_logits'].permute(1, 0, 2, 3) for _pack in outputs], dim=0)
                 loss = loss_func(pred_mask, target)
             else:
                 loss = loss_func(outputs[0]['low_res_logits'].permute(1, 0, 2, 3).contiguous(), target)
 
-            if do_vae and pseudo_bs > 1:
+            if do_vae and adpt_pseudo_bs > 1:
                 for pack in outputs:
-                    loss += .1 * (pack['vae_loss'] / pseudo_bs)
-            elif do_vae and pseudo_bs == 1:
+                    loss += .1 * (pack['vae_loss'] / adpt_pseudo_bs)
+            elif do_vae and adpt_pseudo_bs == 1:
                 loss += .1 * outputs[0]['vae_loss']
             else:
                 pass
@@ -108,8 +110,9 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
     assert args.roi_z_iter % 2 == 1
     n_slice = args.roi_z_iter
     pd = (n_slice // 2, n_slice // 2)
+    step_cnt = 0
 
-    for idx, batch_data in enumerate(loader):
+    for step, batch_data in enumerate(loader):
         # only take 1 batch
         inputs_l = batch_data["image"]
         only_image = 'label' not in batch_data
@@ -127,7 +130,8 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
             random_ids = torch.from_numpy(np.random.choice(num_group, size=bs_size, replace=False))
 
         _loss = iter_slice_patch(
-            random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args, batch_data
+            random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args, batch_data,
+            step=step_cnt
         )
 
         if args.distributed:
@@ -140,7 +144,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args):
             )
         else:
             run_loss.update(_loss.item(), n=len(random_ids))
-        Terminate.show_training_info(epoch, idx, len(loader), run_loss.avg, start_time, args)
+        Terminate.show_training_info(epoch, step, len(loader), run_loss.avg, start_time, args)
         start_time = time.time()
     # I suggest this function is like optimizer.zero_grad(set_to_none=True)
     for param in model.parameters():
