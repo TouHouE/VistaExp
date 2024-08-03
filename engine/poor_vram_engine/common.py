@@ -23,7 +23,7 @@ from utils import model_input as ModelInputer
 from utils import terminate as Terminate
 
 
-@torch.no_grad
+@torch.no_grad()
 def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=None, post_pred=None):
     model.eval()
     run_acc = AverageMeter()
