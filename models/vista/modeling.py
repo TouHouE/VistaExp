@@ -26,7 +26,7 @@ from torch.nn import functional as F
 from icecream import ic
 
 from models.sam import TwoWayTransformer, MaskDecoder
-from models.vae import VAEDecoder
+from models.image_generator import VAEDecoder
 from models.vista import VistaPromptEncoder, VistaImageEncoderViT
 
 GetBatch: itemgetter = itemgetter(0)
@@ -43,7 +43,7 @@ class Vista2pt5D(nn.Module):
         image_encoder: VistaImageEncoderViT,
         prompt_encoder: VistaPromptEncoder,
         mask_decoder: MaskDecoder,
-        vae_decoder: Optional[VAEDecoder],
+        vae_decoder: Optional[nn.Module],
         pixel_mean: List[float] = [123.675, 116.28, 103.53],
         pixel_std: List[float] = [58.395, 57.12, 57.375],
     ) -> None:
@@ -63,8 +63,7 @@ class Vista2pt5D(nn.Module):
         self.image_encoder = image_encoder
         self.prompt_encoder = prompt_encoder
         self.mask_decoder = mask_decoder
-        self.vae_decoder = vae_decoder
-
+        self.image_reconstructor = vae_decoder
 
         self.register_buffer("pixel_mean", torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer("pixel_std", torch.Tensor(pixel_std).view(-1, 1, 1), False)
@@ -198,8 +197,8 @@ class Vista2pt5D(nn.Module):
                     "low_res_logits": low_res_masks,
                 }
 
-                if self.vae_decoder is not None:
-                    vae_loss = self.vae_decoder(curr_embedding, image_record['image'])
+                if self.image_reconstructor is not None:
+                    vae_loss = self.image_reconstructor(curr_embedding, image_record['image'])
                     output_pack['vae_loss'] = vae_loss
                 outputs.append(
                     output_pack
@@ -444,7 +443,7 @@ def _build_vista2pt5d(
             f"{sum(image_encoder_params) * 1.e-6:.2f} M params in image encoder,"
             f"{sum(prompt_encoder_params) * 1.e-6:.2f} M params in prompt encoder,"
             f"{sum(mask_decoder_params) * 1.e-6:.2f} M params in mask decoder{'.' if vae_decoder is None else ','}"
-            f"{sum(vae_decoder_params) * 1.e-6:.2f} M params in vae decoder." if vae_decoder is not None else ''
+            f"{sum(vae_decoder_params) * 1.e-6:.2f} M params in image generator." if vae_decoder is not None else ''
         )
 
         total_trainable_params = sum(p.numel() if p.requires_grad else 0 for p in sam.parameters())
