@@ -15,12 +15,12 @@ from typing import List
 
 from torch import nn as nn
 from torch.optim import Adam, Optimizer
-from torch.optim.lr_scheduler import LambdaLR, _LRScheduler
+from torch.optim.lr_scheduler import LambdaLR, _LRScheduler, LRScheduler
 
 __all__ = ["LinearLR", "ExponentialLR"]
 
 
-class _LRSchedulerMONAI(_LRScheduler):
+class _LRSchedulerMONAI(LRScheduler):
     """Base class for increasing the learning rate between two boundaries over a number
     of iterations"""
 
@@ -89,7 +89,7 @@ class WarmupCosineSchedule(LambdaLR):
         return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(self.cycles) * 2.0 * progress)))
 
 
-class LinearWarmupCosineAnnealingLR(_LRScheduler):
+class LinearWarmupCosineAnnealingLR(LRScheduler):
     def __init__(
         self,
         optimizer: Optimizer,
