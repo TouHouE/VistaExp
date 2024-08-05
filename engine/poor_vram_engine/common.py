@@ -16,6 +16,7 @@ from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 import wandb
 
+from engine import utils as EU
 from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
 from engine.poor_vram_engine import phase1_train as PT1
 from engine.poor_vram_engine import phase2_train as PT2
@@ -132,17 +133,19 @@ def run_training(
             if run is not None:
                 run.log({'lr': lr, 'epoch': epoch})
         # Used to change probability.
-        if args.label_prompt and args.point_prompt:
-            if epoch < args.label_prompt_warm_up_epoch:
-                # during warm up, we drop class label prompt embedding with less prob,
-                # since class label prompt embedding layer is trained from scratch.
-                args.drop_label_prob = 0.2
-                args.drop_point_prob = 0.5
-            else:
-                # after warmp up, we evenly drop two kinds of prompts
-                args.drop_label_prob = 0.5
-                args.drop_point_prob = 0.5
+        if EU.change_drop_prob(args, epoch):
             Terminate.show_prob(args)
+        # if args.label_prompt and args.point_prompt:
+        #     if epoch < args.label_prompt_warm_up_epoch:
+        #         # during warm up, we drop class label prompt embedding with less prob,
+        #         # since class label prompt embedding layer is trained from scratch.
+        #         args.drop_label_prob = 0.2
+        #         args.drop_point_prob = 0.5
+        #     else:
+        #         # after warmp up, we evenly drop two kinds of prompts
+        #         args.drop_label_prob = 0.5
+        #         args.drop_point_prob = 0.5
+        #     Terminate.show_prob(args)
 
         # Start Training
         # we don't perform iterative training for the first args.iterative_training_warm_up_epoch epochs
