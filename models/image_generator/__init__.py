@@ -1,0 +1,1 @@
+from models.image_generator.seg_resnet_decoder import VAEDecoder
