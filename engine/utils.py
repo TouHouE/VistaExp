@@ -15,6 +15,18 @@ import scipy.ndimage as ndimage
 import torch
 
 
+def change_drop_prob(args, epoch) -> bool:
+    if not args.label_prompt or not args.point_prompt:
+        return False
+    args.drop_point_prob = .5
+    if epoch < args.label_prompt_warm_up_epoch:
+        args.drop_label_prob = .2
+    else:
+        args.drop_label_prob = .5
+    return True
+
+
+
 def resample_3d(img, target_size):
     imx, imy, imz = img.shape
     tx, ty, tz = target_size
