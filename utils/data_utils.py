@@ -85,6 +85,8 @@ def get_loader(args):
     train_files, val_files, test_files = split_data(args)
     random_transforms = get_transforms(args)
     resizer = MF.ResizeWithPadOrCropd(keys=['image', 'label'], spatial_size=(args.sam_image_size, args.sam_image_size, 320), allow_missing_keys=True)
+    spacer = Spacingd(keys=["image", "label"], pixdim=args.pixdim, mode=("bilinear", "nearest"), allow_missing_keys=True)
+
     if args.poor_mode:
         print(f'Resizer change from {resizer.get_transform_info()} with {resizer.padder.padder.spatial_size}', end=' => ')
         resizer = MF.SpatialPadd(
@@ -92,15 +94,17 @@ def get_loader(args):
             spatial_size=(args.sam_image_size, args.sam_image_size, -1), mode='minimum', method='end'
         )
         print(f'{resizer.get_transform_info()} with {resizer.padder.spatial_size}')
-        # resizer = MF.Identityd(keys=['image', 'label'], allow_missing_keys=True)
+
+    if args.no_spacing:
+        spacer = MF.Identityd(keys=['image', 'label'], allow_missing_keys=True)
+
 
     train_transform = transforms.Compose(
         [
             LoadImaged(keys=["image", "label"], image_only=True, allow_missing_keys=True),
             EnsureChannelFirstd(keys=["image", "label"], allow_missing_keys=True),
             Orientationd(keys=["image", "label"], axcodes="RAS", allow_missing_keys=True),
-            Spacingd(keys=["image", "label"], pixdim=args.pixdim, mode=("bilinear", "nearest"), allow_missing_keys=True),
-            resizer,
+            spacer, resizer,
             ScaleIntensityRanged(
                 keys=["image"], a_min=args.a_min, a_max=args.a_max, b_min=args.b_min, b_max=args.b_max, clip=True
             ),
@@ -113,8 +117,7 @@ def get_loader(args):
             LoadImaged(keys=["image", "label"], image_only=True, allow_missing_keys=True),
             EnsureChannelFirstd(keys=["image", "label"], allow_missing_keys=True),
             Orientationd(keys=["image", "label"], axcodes="RAS", allow_missing_keys=True),
-            Spacingd(keys=["image", "label"], pixdim=args.pixdim, mode=("bilinear", "nearest"), allow_missing_keys=True),
-            resizer,
+            spacer, resizer,
             ScaleIntensityRanged(
                 keys=["image"], a_min=args.a_min, a_max=args.a_max, b_min=args.b_min, b_max=args.b_max, clip=True
             ),

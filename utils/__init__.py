@@ -27,6 +27,7 @@ def get_args():
     parser.add_argument('--name')
     parser.add_argument('--dataset_type', default='cache', choices=['cache', 'persis', 'normal'], type=str,
                         help='belong to [cache, persis, normal], cache for CacheDataset persis for ')
+    parser.add_argument('--no_spacing', default=False, action='store_true', help='Do not using monai.transforms.Spacing during CT loading.')
     parser.add_argument('--pixdim', default=[1.5, 1.5, 1.5], nargs=3, type=list[int], help='specified the Spacing transforms')
     parser.add_argument('--vae', action='store_true', default=False, help='using vae branch do reconstruct image loss.')
     parser.add_argument('--loss_func', choices=['dice_ce', 'dice_focal'], default='dice_ce')
