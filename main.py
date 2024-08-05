@@ -29,7 +29,7 @@ from monai.utils.enums import MetricReduction
 from icecream import ic
 
 from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
-from engine import builtin_engine as NormEngine
+from engine import normal_engine as NormEngine
 from engine import poor_vram_engine as PoorEngine
 from utils.data_utils import get_loader
 from utils import get_args
