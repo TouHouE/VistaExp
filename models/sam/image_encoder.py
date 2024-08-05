@@ -108,12 +108,13 @@ class ImageEncoderViT(nn.Module):
         x = self.patch_embed(x)
         if self.pos_embed is not None:
             x = x + self.pos_embed
-
+        ic(x.shape)
         for blk in self.blocks:
             x = blk(x)
+            ic(x.shape)
 
         x = self.neck(x.permute(0, 3, 1, 2))
-
+        ic(x.shape)
         return x
 
 
