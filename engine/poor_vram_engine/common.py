@@ -98,8 +98,8 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
 
 
 def run_training(
-    model, train_loader, val_loader, optimizer, loss_func, acc_func, args,
-    scheduler=None, start_epoch=0, post_label=None, post_pred=None,
+        model, train_loader, val_loader, optimizer, loss_func, acc_func, args,
+        scheduler=None, start_epoch=0, post_label=None, post_pred=None,
 ):
     writer = None
     run = None
@@ -121,69 +121,31 @@ def run_training(
     best_epoch = -1
     val_MA = None
     best_log = {}
+    stage = 'init'
+
     for epoch in range(start_epoch, args.max_epochs):
         if args.distributed:
             torch.distributed.barrier()
         print(args.rank, time.ctime(), "Epoch:", epoch)
         epoch_time = time.time()
-        # Used to change learning rate
-        if args.rank == 0:
-            lr = scheduler.get_last_lr() if scheduler is not None else optimizer.param_groups[0]['lr']
-            print("Current lr:", lr)
-            if run is not None:
-                run.log({'lr': lr, 'epoch': epoch})
+
+        Terminate.hint_lr(args, epoch, optimizer, scheduler, run)
+
         # Used to change probability.
         if EU.change_drop_prob(args, epoch):
             Terminate.show_prob(args)
-        # if args.label_prompt and args.point_prompt:
-        #     if epoch < args.label_prompt_warm_up_epoch:
-        #         # during warm up, we drop class label prompt embedding with less prob,
-        #         # since class label prompt embedding layer is trained from scratch.
-        #         args.drop_label_prob = 0.2
-        #         args.drop_point_prob = 0.5
-        #     else:
-        #         # after warmp up, we evenly drop two kinds of prompts
-        #         args.drop_label_prob = 0.5
-        #         args.drop_point_prob = 0.5
-        #     Terminate.show_prob(args)
 
         # Start Training
         # we don't perform iterative training for the first args.iterative_training_warm_up_epoch epochs
-        if epoch > args.iterative_training_warm_up_epoch:
-            train_function = PT2.train_epoch
-        #     if args.reuse_img_embedding:
-        #         if args.rank == 0:
-        #             print("Iterative Training: Reuse image embedding!")
-        #         train_loss = train_epoch_iterative(
-        #             model, train_loader, optimizer,
-        #             scaler=scaler, epoch=epoch, loss_func=loss_func,
-        #             run=run, args=args
-        #         )
-        #     else:
-        #         if args.rank == 0:
-        #             print("Iterative Training: Don't reuse image embedding!")
-        #         raise NotImplementedError
-        # else:
-        #     pass
+        if epoch > args.iterative_training_warm_up_epoch and stage == 'init':
+            train_function = EU.find_executable_batch_size(PT2.train_epoch, starting_batch_size=args.quasi_batch_size)
+            stage = 'adjust'
         train_loss = train_function(
             model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func, args=args, run=run
         )
-            # print(f" Rank: {args.rank} Single-step Training")
-            # train_loss = train_epoch(
-            #     model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func, args=args, run=run
-            # )
         # Training Done.
 
-        if args.rank == 0:
-            Terminate.show_trained_info(epoch, train_loss, epoch_time, args)
-
-            if writer is not None:
-                writer.add_scalar("train_loss", train_loss, epoch)
-            if run is not None:
-                run.log({
-                    'train_loss': train_loss,
-                    'epoch': epoch
-                })
+        Terminate.show_trained_info(args, epoch, train_loss, epoch_time, writer, run)
         # Show Training information done.
 
         # Check running validation or not
