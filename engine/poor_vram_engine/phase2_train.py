@@ -11,10 +11,6 @@ import torch
 import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data.distributed
-from monai.data import decollate_batch, MetaTensor
-from monai.metrics import compute_dice
-from monai import transforms as MF
-from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 from accelerate.utils import find_executable_batch_size
 from icecream import ic
@@ -70,6 +66,7 @@ def prompt_adjust_mask(image_embedding, data, target, target_original: torch.Ten
     return loss
 
 
+
 def iter_slice_patch(
         slice_ids: torch.Tensor, inputs_l: torch.Tensor, labels_l: torch.Tensor,
         model, optimizer, scaler, image_only, loss_func,
@@ -77,7 +74,7 @@ def iter_slice_patch(
 ):
     _loss = assign_device(torch.tensor(0.0), args.rank)
     do_vae = args.vae
-    pseudo_bs = args.quasi_batch_size
+    pseudo_bs = kwargs.get('workable_bs', args.quasi_batch_size)
     seq_slice_ids = slice_ids.split(pseudo_bs)
 
     for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
@@ -116,7 +113,7 @@ def iter_slice_patch(
     return _loss
 
 
-def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args):
+def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, run, args):
     print(f'Prompt Adjust training...')
     model.train()
     start_time = time.time()
@@ -141,7 +138,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args):
         random_ids = torch.from_numpy(np.random.choice(n_inputs_patch, size=ids_size, replace=False))
 
         _loss = iter_slice_patch(
-            random_ids, inputs_patch, labels_l, model, optimizer, scaler, image_only, loss_func, args
+            random_ids, inputs_patch, labels_l, model, optimizer, scaler, image_only, loss_func, args, workable_bs=batch_size
         )
 
         _loss /= min(args.num_patch, n_inputs_patch)
