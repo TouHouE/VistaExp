@@ -88,10 +88,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args):
         only_image = 'label' not in batch_data
         inputs_l = batch_data['image']
         labels_l = batch_data.get('label', torch.zeros_like(inputs_l))
-
-        # TODO: we only support batch_size = 1 for data loader.
         n_z_before_pad = labels_l.shape[-1]
-
         n_slice = args.roi_z_iter
         # pad the z direction, so we can easily extract 2.5D input and predict labels for the center slice
         pd = (n_slice // 2, n_slice // 2)
