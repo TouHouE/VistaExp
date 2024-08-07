@@ -10,7 +10,10 @@ def ask_logdir_root(args):
 
 def ask_cache_root(args):
     if args.dataset_type == 'persis' or (args.dataset_type == 'normal' and args.poor_mode):
-        response = input(f'Where to allocate cache path [default:./cache]')
+        default_path = os.path.join(args.logdir, 'cache')
+        response = input(f'Where to allocate cache path [default:{default_path}]')
+        if len(response.replace(' ', '')) == 0:
+            response = default_path
         os.makedirs(response, exist_ok=True)
         return response
     return None
