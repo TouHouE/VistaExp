@@ -93,7 +93,10 @@ def iter_slice_patch(
     return slice_iter_loss / len(slice_ids)
 
 
-def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, **kwargs):
+def train_epoch(
+        model: Type[torch.nn.Module], loader: Type[torch.utils.data.DataLoader], optimizer: Type[torch.optim.Optimizer],
+        scaler: Type[GradScaler], epoch: int, loss_func: Callable, args: Type[argparse.Namespace], **kwargs
+):
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
