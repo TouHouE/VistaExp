@@ -343,7 +343,7 @@ def _build_vista2pt5d(
     **kwargs
 ):
     prompt_embed_dim = 256
-    image_size = image_size  # TODO: Shall we try to adapt model to 512x512 ?
+    image_size = image_size
     vit_patch_size = 16
     image_embedding_size = image_size // vit_patch_size
     vae_decoder = None
@@ -379,7 +379,7 @@ def _build_vista2pt5d(
             clip_class_label_prompt=clip_class_label_prompt,
         ),
         mask_decoder=MaskDecoder(
-            num_multimask_outputs=3,  # TODO: only predict one binary mask
+            num_multimask_outputs=3,
             transformer=TwoWayTransformer(
                 depth=2,
                 embedding_dim=prompt_embed_dim,
