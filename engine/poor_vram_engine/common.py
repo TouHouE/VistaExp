@@ -25,51 +25,52 @@ from utils import terminate as Terminate
 
 
 @torch.no_grad()
-def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=None, post_pred=None):
+def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=None, post_pred=None, **kwargs):
     model.eval()
     run_acc = AverageMeter()
     start_time = time.time()
     n_slice = args.roi_z_iter
+    hf_slice = n_slice // 2
     # pad the z direction, so we can easily extract 2.5D input and predict labels for the center slice
-    pd = (n_slice // 2, n_slice // 2)
-    for idx, batch_data in enumerate(loader):
-        # only take 1 batch
-        inputs_l = batch_data["image"]
-        labels_l = batch_data["label"]
-        B = inputs_l.shape[0]
-        inputs_l = inputs_l.squeeze()
-        labels_l = labels_l.squeeze()
+    pd = (hf_slice, hf_slice)
+    num_half_patch: int = args.num_patch_val // 2
 
+    for idx, batch_data in enumerate(loader):
+        buf_image, buf_pred, buf_label, buf_slice_loc = list(), list(), list(), list()
+        # only take 1 batch
+        inputs_l = batch_data["image"].squeeze()
+        labels_l = batch_data["label"].squeeze()
+        B = inputs_l.shape[0]
         # padding at last axis (z-axis), the goal in this step like convolution padding
         inputs_l = F.pad(inputs_l, pd, "constant", 0)
-        labels_l = F.pad(labels_l, pd, "constant", 0)
+        inputs_l = inputs_l.unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()
+
+        labels_l = labels_l.permute(2, 0, 1).contiguous()
+        n_group_patch = inputs_l.shape[0]
+        val_patch_ids = torch.arange(n_group_patch - num_half_patch, n_group_patch + num_half_patch + 1)
         n_z_after_pad = labels_l.shape[-1]
 
         acc_sum_total = 0.0
         not_nans_total = 0.0
-        start = n_z_after_pad // 2 - args.num_patch_val // 2
-        end = n_z_after_pad // 2 + args.num_patch_val // 2
         # We only loop the center args.num_patch_val slices to save val time
-        for start_idx in range(start, end):
-            left_ptr = start_idx - n_slice // 2
-            right_ptr = start_idx + n_slice // 2 + 1
-            if B == 1:
-                inputs = inputs_l[..., left_ptr: right_ptr].permute(2, 0, 1)
-            else:
-                inputs = inputs_l[..., left_ptr: right_ptr].permute(0, 1, 4, 2, 3)
-
+        for patch_idx in val_patch_ids:
+            inputs = inputs_l[patch_idx]
             # we only need the label for the center slice
-            labels = labels_l[..., left_ptr: right_ptr][..., n_slice // 2]
+            labels = labels_l[patch_idx]
+            buf_image.append(inputs[hf_slice].cpu().numpy())
+            buf_label.append(labels.cpu().numpy())
+
             data, target, _ = ModelInputer.prepare_sam_val_input_cp_only(
-                inputs.cuda(args.rank), labels.cuda(args.rank), args
+                ModelInputer.assign_device(inputs, args.rank), ModelInputer.assign_device(labels, args.rank), args
             )
+
             with autocast(enabled=args.amp):
                 outputs = model(data)
                 logit = torch.cat([_out['high_res_logits'] for _out in outputs], dim=0)
 
             y_pred = torch.stack(post_pred(decollate_batch(logit)), 0)
 
-            # TODO: we compute metric for each prompt for simplicity in validation.
+            buf_pred.append(y_pred.cpu().numpy())
             acc_batch = compute_dice(y_pred=y_pred, y=target)
             acc_sum, not_nans = (
                 torch.nansum(acc_batch).item(),
@@ -81,7 +82,8 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
         acc, not_nans = acc_sum_total / not_nans_total, not_nans_total
         f_name = batch_data["image"].meta["filename_or_obj"]
         print(f"Rank: {args.rank}, Case: {f_name}, Acc: {acc:.4f}, N_prompts: {int(not_nans)} ")
-
+        # prepare some element for update, I take those element as "Bad" quality data.
+        run_acc.add(acc, (batch_data['image_name'], batch_data['label_name']), )
         acc = torch.tensor(acc).cuda(args.rank)
         not_nans = torch.tensor(not_nans).cuda(args.rank)
 
@@ -94,6 +96,8 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
             run_acc.update(acc.cpu().numpy(), n=not_nans.cpu().numpy())
         Terminate.show_validing_info(epoch, run_acc.avg, idx, len(loader), start_time, args)
         start_time = time.time()
+    # Log those data on wandb.
+    run_acc.log_worst(kwargs.get('run'), epoch)
     return run_acc.avg
 
 
@@ -101,13 +105,10 @@ def run_training(
         model, train_loader, val_loader, optimizer, loss_func, acc_func, args,
         scheduler=None, start_epoch=0, post_label=None, post_pred=None,
 ):
-    writer = None
-    run = None
-    scaler = None
-    train_function: Callable = PT1.train_epoch
+    writer, run, scaler, stage, train_function = None, None, None, 'init', PT1.train_epoch
     step_cnt = 0
 
-    if args.logdir is not None and args.rank == 0:
+    if args.logdir is not None and args.rank == 0 and not args.test_mode:
         writer = SummaryWriter(log_dir=args.logdir)
         if args.rank == 0:
             print("Writing Tensorboard logs to ", args.logdir)
@@ -157,7 +158,7 @@ def run_training(
             val_avg_acc = val_epoch(
                 model, val_loader,
                 iterative=False, epoch=epoch, acc_func=acc_func,
-                args=args, post_label=post_label, post_pred=post_pred
+                args=args, post_label=post_label, post_pred=post_pred, run=run
             )
 
             val_avg_acc = np.mean(val_avg_acc)
