@@ -1,33 +1,38 @@
+import argparse
 import time
+from typing import Type, Union, Callable
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data.distributed
 from torch.cuda.amp import GradScaler, autocast
+import numpy as np
+from monai.data import MetaTensor
 import wandb
 
-from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
+from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint, WorstDataRecord
 from utils import model_input as ModelInputer
 from utils import terminate as Terminate
 
 
 def iter_slice_patch(
-        slice_ids: np.ndarray, inputs_l: torch.Tensor, labels_l: torch.Tensor,
-        model, optimizer, scaler, image_only, loss_func,
-        args, batch_pack, **kwargs
+        slice_ids: Type[torch.Tensor] | Type[MetaTensor],
+        inputs_l: Type[torch.Tensor] | Type[MetaTensor],
+        labels_l: Type[torch.Tensor] | Type[MetaTensor],
+        model: Type[torch.nn.Module], optimizer: Type[torch.optim.Optimizer],
+        scaler: Type[GradScaler] | None, image_only: bool, loss_func: Callable,
+        args: Type[argparse.Namespace], **kwargs
 ):
     """
 
     :param slice_ids:type np.ndarray: contains which index at slice-axis
     :param inputs_l:type torch.Tensor: the shape is Gs x H x W x z_roi
     :param labels_l:type torch.Tensor: the shape is S x H x W
-    :param model:
-    :param optimizer:
-    :param scaler:
-    :param epoch:
-    :param loss_func:
+    :param model:type torch.nn.Module:
+    :param optimizer :type torch.optim.Optimizer:
+    :param scaler :type torch.optim.GradScaler:
+    :param loss_func :type Callable:
     :param args:
     :return:
     """
@@ -39,11 +44,8 @@ def iter_slice_patch(
     step_cnt = kwargs.get('step_cnt', 0)
 
     for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
-        # slice_idx = slice_ids[start_idx: start_idx + pseudo_bs]
         step_cnt += adpt_pseudo_bs
         inputs, labels = inputs_l[slice_idx], labels_l[slice_idx]
-        # ic(inputs.shape)
-        # ic(labels.shape)
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
             inputs.cuda(args.rank), labels.cuda(args.rank), args, model
         )
@@ -60,8 +62,6 @@ def iter_slice_patch(
                     loss += pack['vae_loss'] / adpt_pseudo_bs
 
         else:
-            # ic(outputs[0]['low_res_logits'].shape)
-            # ic(target.shape)
             if adpt_pseudo_bs > 1:
                 pred_mask = torch.cat([_pack['low_res_logits'].permute(1, 0, 2, 3) for _pack in outputs], dim=0)
                 loss = loss_func(pred_mask, target)
@@ -97,12 +97,14 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, **kwar
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
+    bad_record = WorstDataRecord(args)
     assert args.roi_z_iter % 2 == 1
     n_slice = args.roi_z_iter
     pd = (n_slice // 2, n_slice // 2)
     step_cnt = 0
 
     for step, batch_data in enumerate(loader):
+        batch_data: dict[str, Union[Type[MetaTensor], str]]
         # only take 1 batch
         inputs_l = batch_data["image"]
         only_image = 'label' not in batch_data
@@ -123,7 +125,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, **kwar
             random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args, batch_data,
             step=step_cnt
         )
-
+        bad_record.add(_loss, (batch_data['image_name'], batch_data['label_name']))
         if args.distributed:
             loss_list = distributed_all_gather(
                 [_loss],
@@ -139,4 +141,5 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, args, **kwar
     # I suggest this function is like optimizer.zero_grad(set_to_none=True)
     for param in model.parameters():
         param.grad = None
+    bad_record.store(epoch)
     return run_loss.avg
