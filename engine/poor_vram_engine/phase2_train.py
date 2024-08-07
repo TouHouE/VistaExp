@@ -1,10 +1,10 @@
+from argparse import Namespace
+from copy import deepcopy
 import json
 import os
 import random
 import time
-from copy import deepcopy
-from argparse import Namespace
-
+from typing import Type, Callable
 
 import numpy as np
 import torch
@@ -12,26 +12,28 @@ import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data.distributed
 from torch.cuda.amp import GradScaler, autocast
-from accelerate.utils import find_executable_batch_size
 from icecream import ic
 import wandb
 
-from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
+from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint, WorstDataRecord
 from utils import model_input as ModelInputer, assign_device
 from utils import terminate as Terminate
 from utils.decorator import show_exception_file
 
 
-def prompt_adjust_mask(image_embedding, data, target, target_original: torch.Tensor, model, loss_func, args):
+def prompt_adjust_mask(
+        image_embedding, data, target, target_original: torch.Tensor, model, loss_func, mask_predictor: Callable, args
+):
     loss = .0
+    drop_prompt_iter = np.random.randint(args.num_iterative_step - 2)
     for iter_step_cnt in range(args.num_iterative_step):
         with autocast(enabled=args.amp):
-            if args.distributed:
-                outputs = model.module.get_mask_prediction(data, image_embedding)
-            else:
-                outputs = model.get_mask_prediction(data, image_embedding)
+            outputs = mask_predictor(data, image_embedding)
+        # The original shape is B x (Nc x B=1 x H x W), the real batch size is len of the return list.
         pred_mask = torch.cat([_out['low_res_logits'].permute(1, 0, 2, 3) for _out in outputs], dim=0).contiguous()
         loss += loss_func(pred_mask, target)
+        if drop_prompt_iter == iter_step_cnt:
+            continue
 
         previous_point_coords = list()
         previous_point_labels = list()
@@ -40,31 +42,42 @@ def prompt_adjust_mask(image_embedding, data, target, target_original: torch.Ten
             data[i]["mask_inputs"] = _out["low_res_logits"].detach()
             previous_point_labels.append(data[i].get('point_labels', None))
             previous_point_coords.append(data[i].get('point_coords', None))
+
         previous_pred = torch.cat([F.sigmoid(_out['high_res_logits'].detach()) > .5 for _out in outputs], dim=1).float()
         ic(previous_pred.shape)
         ic(target_original.shape)
         point_coords = list()
         point_labels = list()
+        iterator = enumerate(zip(target_original, previous_pred.permute(1, 0, 2, 3).contiguous()))
 
-        for _target_original, _previous_pred in zip(target_original, previous_pred.permute(1, 0, 2, 3).contiguous()):
+        # Prepare prompt training element
+        for bidx, (_target_original, _previous_pred) in iterator:
             _point_coords, _point_labels = ModelInputer.generate_point_prompt(
                 _target_original, args=args, points_pos=1, points_neg=1, previous_pred=_previous_pred
             )
-            point_labels.append(_point_labels)
-            point_coords.append(_point_coords)
-        ic(list(any(torch.isnan(_x.view(-1))) for _x in point_labels))
-        ic(list(any(torch.isnan(_x.view(-1))) for _x in point_coords))
-
-        for bidx in range(len(data)):
-            if previous_point_coords[bidx] is None:
-                data[bidx]['point_coords'] = point_coords[bidx]
-                data[bidx]['point_labels'] = point_labels[bidx]
+            prev_cp = previous_point_coords[bidx]
+            # This if statement is based on:
+            # https://github.com/Project-MONAI/VISTA/blob/vista2.5d/training/trainer_2pt5d.py
+            if prev_cp is None and args.no_more_points_for_cp_only:
+                continue
+            if prev_cp is None:
+                data[bidx]['point_coords'] = _point_coords
+                data[bidx]['point_labels'] = _point_labels
             else:
-                data[bidx]['point_coords'] = torch.cat([previous_point_coords[bidx], point_coords[bidx]], dim=1)
-                data[bidx]['point_labels'] = torch.cat([previous_point_labels[bidx], point_labels[bidx]], dim=1)
+                data[bidx]['point_coords'] = torch.cat([prev_cp, _point_coords], dim=1)
+                data[bidx]['point_labels'] = torch.cat([previous_point_labels[bidx], _point_labels], dim=1)
+            # point_labels.append(_point_labels)
+            # point_coords.append(_point_coords)
+        #
+        # for bidx in range(len(data)):
+        #     if previous_point_coords[bidx] is None:
+        #         data[bidx]['point_coords'] = point_coords[bidx]
+        #         data[bidx]['point_labels'] = point_labels[bidx]
+        #     else:
+        #         data[bidx]['point_coords'] = torch.cat([previous_point_coords[bidx], point_coords[bidx]], dim=1)
+        #         data[bidx]['point_labels'] = torch.cat([previous_point_labels[bidx], point_labels[bidx]], dim=1)
     
     return loss
-
 
 
 def iter_slice_patch(
@@ -76,6 +89,12 @@ def iter_slice_patch(
     do_vae = args.vae
     pseudo_bs = kwargs.get('workable_bs', args.quasi_batch_size)
     seq_slice_ids = slice_ids.split(pseudo_bs)
+    if args.distributed:
+        image_embeddings_getter: Callable = model.module.get_image_embeddings
+        mask_predictor: Callable = model.module.get_mask_prediction
+    else:
+        image_embeddings_getter: Callable = model.get_image_embeddings
+        mask_predictor: Callable = model.get_mask_prediction
 
     for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
         inputs, labels = inputs_l[slice_idx], labels_l[slice_idx]
@@ -88,13 +107,10 @@ def iter_slice_patch(
             param.grad = None
 
         with autocast(enabled=args.amp):
-            if args.distributed:
-                image_embeddings = model.module.get_image_embeddings(data)
-            else:
-                image_embeddings = model.get_image_embeddings(data)
+            image_embeddings = image_embeddings_getter(data)
 
         loss = prompt_adjust_mask(
-            image_embeddings, data, target, target_original, model, loss_func, args
+            image_embeddings, data, target, target_original, model, loss_func, mask_predictor, args
         )
 
         if args.amp:
@@ -114,10 +130,11 @@ def iter_slice_patch(
 
 
 def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, run, args):
-    print(f'Prompt Adjust training...')
+    print(f'Prompt Adjust training, current batch_size: {batch_size}')
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
+    bad_quality_recorder = WorstDataRecord(args)
     # we need to make sure the number of 2.5D input is an odd number.
     assert args.roi_z_iter % 2 == 1
     n_slice = args.roi_z_iter
@@ -142,6 +159,7 @@ def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, 
         )
 
         _loss /= min(args.num_patch, n_inputs_patch)
+        bad_quality_recorder.add(_loss, (batch_data['image_name'], batch_data['label_name']))
         if args.distributed:
             loss_list = distributed_all_gather(
                 [_loss],
@@ -156,4 +174,5 @@ def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, 
         start_time = time.time()
     for param in model.parameters():
         param.grad = None
+    bad_quality_recorder.store(epoch)
     return run_loss.avg
