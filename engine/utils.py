@@ -8,15 +8,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import argparse
 import functools
 import os
+from typing import Type, Optional
 import inspect
 import gc
 
 import numpy as np
 import scipy.ndimage as ndimage
 import torch
-from accelerate.utils import is_xpu_available
+import wandb.wandb_run
+
+from utils import io as UIO
 
 
 def change_drop_prob(args, epoch) -> bool:
@@ -28,7 +32,6 @@ def change_drop_prob(args, epoch) -> bool:
     else:
         args.drop_label_prob = .5
     return True
-
 
 
 def resample_3d(img, target_size):
@@ -53,15 +56,31 @@ class AverageMeter(object):
     avg: int | float
     sum: int | float
     count: int | float
+    worst_sample_name: list
+    worst_val: list
+    worst_pred: list[list]
+    worst_label: list[list]
+    worst_image: list[list]
 
-    def __init__(self):
+    def __init__(self, args: Optional[Type[argparse.Namespace]] = None):
         self.reset()
+        self.args = args
+        if args is not None:
+            self.LABELS = UIO.load_labels(args.get('label_map_path'))
+        else:
+            self.Labels = None
+    pass
 
     def reset(self):
         self.val = 0
         self.avg = 0
         self.sum = 0
         self.count = 0
+        self.worst_sample_name = ['UNK']
+        self.worst_val = [1000]
+        self.worst_pred = [[]]
+        self.worst_label = [[]]
+        self.worst_image = [[]]
 
     def update(self, val, n=1):
         self.val = val
@@ -69,9 +88,133 @@ class AverageMeter(object):
         self.count += n
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
 
+    def add(
+            self, val_acc: Optional[float] = None,
+            sample_name: Optional[tuple[str, str]] = None,
+            buf_image: Optional[Type[np.ndarray]] = None,
+            buf_pred: Optional[Type[np.ndarray]] = None,
+            buf_label: Optional[Type[np.ndarray]] = None
+    ):
+        """
+
+        :param val_acc(Optional[float]): The metrics value for current sample.
+        :param sample_name:
+        :param buf_image:
+        :param buf_pred:
+        :param buf_label:
+        :return:
+        """
+        if self.args is None:
+            return
+        # Not so bad.
+        if val_acc >= max(self.worst_val):
+            return
+        self.worst_val.append(val_acc)
+        self.worst_sample_name.append(sample_name)
+        self.worst_image.append(buf_image)
+        self.worst_pred.append(buf_pred)
+        self.worst_label.append(buf_label)
+
+        (
+            self.worst_val, self.worst_sample_name,
+            self.worst_image, self.worst_pred, self.worst_label
+        ) = sorted(list(zip(
+            self.worst_val, self.worst_sample_name,
+            self.worst_image, self.worst_pred, self.worst_label
+        )), reverse=True)
+
+        while len(self.worst_val) > 5:
+            _ = self.worst_sample_name.pop(0)
+            _ = self.worst_val.pop(0)
+            _ = self.worst_image.pop(0)
+            _ = self.worst_pred.pop(0)
+            _ = self.worst_label.pop(0)
+
+    def log_worst(self, run: Type[wandb.wandb_run.Run], epoch: int):
+        if len(self.worst_val) <= 0:
+            print(f'No data in list, can\'t upload any thing')
+            return
+        if run is None:
+            print(f'Wandb Logger cannot be None.')
+            return
+        worst_zip: zip = zip(
+            self.worst_val, self.worst_sample_name,
+            self.worst_image, self.worst_pred, self.worst_label
+        )
+        for tot_dice, fname, image_list, pred_list, label_list in worst_zip:
+            for slice_idx, (image, pred, label) in enumerate(zip(image_list, pred_list, label_list)):
+                mask_pack = {
+                    'predictions': {
+                        'mask_data': label,
+                        'class_labels': self.LABELS
+                    },
+                    'ground_truth': {
+                        'mask_data': label,
+                        'class_labels': self.LABELS
+                    }
+
+                }
+                image_obj = wandb.Image(
+                    image,
+                    masks=mask_pack,
+                    caption=f'Slice:{slice_idx}, file:{fname}'
+                )
+                run.log({
+                    f'Worst Valid-{tot_dice:.3f}': image_obj,
+                    'epoch': epoch
+                })
+
+
+class WorstDataRecord(object):
+    maxlen: int
+    metrics: list
+    image_name: list
+    label_name: list
+    def __init__(self, args):
+        self.args = args
+        self.rest()
+        self.maxlen = args.bad_image_maxlen
+
+    def rest(self):
+        self.metrics = list()
+        self.image_name = list()
+        self.label_name = list()
+
+    @torch.no_grad()
+    def add(self, metrics: Type[torch.Tensor], file_name: list[tuple[str, str]]):
+        if self.maxlen <= 0:
+            return
+        for loss, (_image_name, _label_name) in zip(metrics.cpu().tolist(), file_name):
+            if loss < min(self.metrics):
+                continue
+            self.metrics.append(loss)
+            self.image_name.append(_image_name)
+            self.label_name.append(_label_name)
+        (
+            self.metrics, self.image_name, self.label_name
+        ) = sorted(list(zip(self.metrics, self.image_name, self.label_name)))
+
+        while len(self.metrics) > self.maxlen:
+            _ = self.metrics.pop(0)
+            _ = self.image_name.pop(0)
+            _ = self.label_name.pop(0)
+
+    def store(self, epoch):
+        if self.maxlen <= 0:
+            return
+        store_folder = self.args.get('logdir', './')
+        path = os.path.join(store_folder, f'the_worse_sample.json')
+
+        pack = [{'loss': loss, 'image': image_path, 'label': label_path} for loss, image_path, label_path in zip(self.metrics, self.image_name, self.label_name)]
+        new_content = {
+            'epoch': epoch,
+            'pack': pack
+        }
+        UIO.save_continue_json(path, new_content)
+
 
 def distributed_all_gather(
-    tensor_list, valid_batch_size=None, out_numpy=False, world_size=None, no_barrier=False, is_valid=None
+        tensor_list, valid_batch_size=None, out_numpy=False, world_size=None, no_barrier=False, is_valid=None
 ):
     if world_size is None:
         world_size = torch.distributed.get_world_size()
