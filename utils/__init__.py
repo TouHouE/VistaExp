@@ -3,6 +3,16 @@ import warnings, argparse
 import torch
 
 
+def sorted_by(sort_array, by, return_both=False, reverse=False):
+    sorted_array = sorted(zip(by, sort_array), reverse=reverse)
+    xlist = list(x for _, x in sorted_array)
+
+    if not return_both:
+        return xlist
+    ylist = list(y for y, _ in sorted_array)
+    return xlist, ylist
+
+
 def get_unique_labels(unique_labels) -> torch.LongTensor:
     if hasattr(unique_labels, 'as_tensor'):
         return unique_labels.as_tensor().long()
@@ -27,18 +37,21 @@ def get_args():
     parser.add_argument('--name')
     parser.add_argument('--dataset_type', default='cache', choices=['cache', 'persis', 'normal'], type=str,
                         help='belong to [cache, persis, normal], cache for CacheDataset persis for ')
-    parser.add_argument('--no_spacing', default=False, action='store_true', help='Do not using monai.transforms.Spacing during CT loading.')
-    parser.add_argument('--pixdim', default=[1.5, 1.5, 1.5], nargs=3, type=list[int], help='specified the Spacing transforms')
+    parser.add_argument('--no_spacing', default=False, action='store_true',
+                        help='Do not using monai.transforms.Spacing during CT loading.')
+    parser.add_argument('--pixdim', default=[1.5, 1.5, 1.5], nargs=3, type=float,
+                        help='specified the Spacing transforms')
     parser.add_argument('--vae', action='store_true', default=False, help='using vae branch do reconstruct image loss.')
     parser.add_argument('--loss_func', choices=['dice_ce', 'dice_focal'], default='dice_ce')
-    parser.add_argument('--batch_type', choices=['patch', 'aug', 'not'], default='not', help='If in [patch, aug] --quasi_batch_size should been setting.')
-    parser.add_argument('--quasi_batch_size', type=int)
+    parser.add_argument('--batch_type', choices=['patch', 'aug', 'not'], default='not',
+                        help='If in [patch, aug] --quasi_batch_size should been setting.')
+    parser.add_argument('--quasi_batch_size', type=int, default=1)
     parser.add_argument('--num_aug', type=int, default=0)
     parser.add_argument('--poor_mode', action='store_true', default=False)
     parser.add_argument('--eval_bg', action='store_true', default=False,
                         help='setting this into monai.metrics.DiceMetrics\'s include_background argument')
-
-
+    parser.add_argument('--label_map_path', type=str, default='./res/labels_id.json')
+    parser.add_argument('--bad_image_maxlen', type=int, required=False, default=-1)
 
     parser.add_argument("--checkpoint", default=None, help="start training from saved checkpoint")
     parser.add_argument("--logdir", default="vista2pt5d", type=str, help="directory to save the tensorboard logs")
@@ -48,7 +61,8 @@ def get_args():
     parser.add_argument("--max_epochs", default=1600, type=int, help="max number of training epochs")
     parser.add_argument("--batch_size", default=1, type=int, help="number of batch size")
     parser.add_argument("--optim_lr", default=1e-4, type=float, help="optimization learning rate")
-    parser.add_argument("--optim_name", default="adamw", choices=['adam', 'adamw', 'sgd'], type=str, help="optimization algorithm")
+    parser.add_argument("--optim_name", default="adamw", choices=['adam', 'adamw', 'sgd'], type=str,
+                        help="optimization algorithm")
     parser.add_argument("--reg_weight", default=1e-5, type=float, help="regularization weight")
     parser.add_argument("--momentum", default=0.99, type=float, help="momentum")
     parser.add_argument("--noamp", action="store_true", help="do NOT use amp for training")
@@ -66,7 +80,8 @@ def get_args():
     parser.add_argument("--b_max", default=1.0, type=float, help="b_max in ScaleIntensityRanged")
     parser.add_argument("--fold", default=0, type=int, help="fold")
     parser.add_argument(
-        "--splitval", default=0, type=float, help="if not zero, split the last portion to validation and validation to test"
+        "--splitval", default=0, type=float,
+        help="if not zero, split the last portion to validation and validation to test"
     )
     parser.add_argument("--roi_z_iter", default=9, type=int, help="roi size in z direction")
     parser.add_argument("--roi_z_iter_dilation", default=0, type=int, help="dilation size in z direction")
@@ -74,7 +89,8 @@ def get_args():
     parser.add_argument("--warmup_epochs", default=50, type=int, help="number of warmup epochs")
     parser.add_argument("--resume_ckpt", action="store_true", help="resume training from pretrained checkpoint")
     parser.add_argument("--num_patch", default=4, type=int, help="number of patches in each volume")
-    parser.add_argument("--num_patch_val", default=30, type=int, help="number of patches in each volume during validation")
+    parser.add_argument("--num_patch_val", default=30, type=int,
+                        help="number of patches in each volume during validation")
     parser.add_argument("--num_prompt", default=8, type=int, help="number of prompts for each training instance")
     parser.add_argument("--clip", default=None, type=float, help="gradient clip")
     parser.add_argument("--seed", default=-1, type=int, help="seed")
@@ -100,11 +116,12 @@ def get_args():
     parser.add_argument("--points_val_pos", default=1, type=int, help="number of positive point prompts in evaluation")
     parser.add_argument("--points_val_neg", default=0, type=int, help="number of negative point prompts in evaluation")
     parser.add_argument("--num_iterative_step", default=5, type=int, help="number of iterative step in training")
-    parser.add_argument("--reuse_img_embedding", action="store_true", help="reuse image embedding in iterative training")
+    parser.add_argument("--reuse_img_embedding", action="store_true",
+                        help="reuse image embedding in iterative training")
     parser.add_argument(
         "--no_more_points_for_cp_only", action="store_true",
         help="if no point prompt at the first prompt generation we will not add "
-        "more additional pointa during iterative training.",
+             "more additional pointa during iterative training.",
     )
     parser.add_argument(
         "--iterative_training_warm_up_epoch", default=100, type=int,
