@@ -69,6 +69,7 @@ class AverageMeter(object):
             self.LABELS = UIO.load_labels(args.get('label_map_path'))
         else:
             self.Labels = None
+
     pass
 
     def reset(self):
@@ -170,6 +171,7 @@ class WorstDataRecord(object):
     metrics: list
     image_name: list
     label_name: list
+
     def __init__(self, args):
         self.args = args
         self.rest()
@@ -181,9 +183,26 @@ class WorstDataRecord(object):
         self.label_name = list()
 
     @torch.no_grad()
-    def add(self, metrics: Type[torch.Tensor], file_name: list[tuple[str, str]]):
+    def add(self, metrics: torch.Tensor | float, file_name: list[tuple[str, str]]):
+        """
+
+        :param metrics:
+        :param file_name: [image_name, label_name]
+        :return:
+        """
         if self.maxlen <= 0:
             return
+        if not isinstance(metrics, float):
+            self._iter_add(metrics, file_name)
+            return
+
+        if metrics > min(self.metrics):
+            self.metrics.append(metrics)
+            self.image_name.append(file_name[0])
+            self.label_name.append(file_name[1])
+        self._keep_maxlen()
+
+    def _iter_add(self, metrics, file_name):
         for loss, (_image_name, _label_name) in zip(metrics.cpu().tolist(), file_name):
             if loss < min(self.metrics):
                 continue
@@ -193,7 +212,9 @@ class WorstDataRecord(object):
         (
             self.metrics, self.image_name, self.label_name
         ) = sorted(list(zip(self.metrics, self.image_name, self.label_name)))
+        self._keep_maxlen()
 
+    def _keep_maxlen(self):
         while len(self.metrics) > self.maxlen:
             _ = self.metrics.pop(0)
             _ = self.image_name.pop(0)
@@ -205,7 +226,8 @@ class WorstDataRecord(object):
         store_folder = self.args.get('logdir', './')
         path = os.path.join(store_folder, f'the_worse_sample.json')
 
-        pack = [{'loss': loss, 'image': image_path, 'label': label_path} for loss, image_path, label_path in zip(self.metrics, self.image_name, self.label_name)]
+        pack = [{'loss': loss, 'image': image_path, 'label': label_path} for loss, image_path, label_path in
+                zip(self.metrics, self.image_name, self.label_name)]
         new_content = {
             'epoch': epoch,
             'pack': pack
