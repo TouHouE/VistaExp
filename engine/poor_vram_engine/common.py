@@ -15,6 +15,7 @@ from monai import transforms as MT
 from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 import wandb
+from icecream import ic
 
 from engine import utils as EU
 from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
@@ -47,9 +48,14 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
 
         labels_l = labels_l.permute(2, 0, 1).contiguous()
         n_group_patch = inputs_l.shape[0]
-        val_patch_ids = torch.arange(n_group_patch - num_half_patch, n_group_patch + num_half_patch + 1)
-        n_z_after_pad = labels_l.shape[-1]
-
+        if (n_group_patch := inputs_l.shape[0]) > (num_val_patch := args.num_patch_val):
+            middle_group_index = n_group_patch // 2
+            val_patch_ids = torch.arange(middle_group_index - num_half_patch, middle_group_index + num_half_patch + 1)
+        else:
+            val_patch_ids = torch.arange(n_group_patch)
+        ic(val_patch_ids.min(), val_patch_ids.max())
+        ic(inputs_l.shape)        
+        
         acc_sum_total = 0.0
         not_nans_total = 0.0
         # We only loop the center args.num_patch_val slices to save val time
