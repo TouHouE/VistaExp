@@ -192,6 +192,7 @@ class WorstDataRecord(object):
         """
         if self.maxlen <= 0:
             return
+        metrics = metrics.cpu().tolist()
         if not isinstance(metrics, float):
             self._iter_add(metrics, file_name)
             return
@@ -203,7 +204,7 @@ class WorstDataRecord(object):
         self._keep_maxlen()
 
     def _iter_add(self, metrics, file_name):
-        for loss, (_image_name, _label_name) in zip(metrics.cpu().tolist(), file_name):
+        for loss, (_image_name, _label_name) in zip(metrics.cpu(), file_name):
             if loss < min(self.metrics):
                 continue
             self.metrics.append(loss)
