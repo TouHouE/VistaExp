@@ -107,7 +107,7 @@ def train_epoch(
     step_cnt = 0
 
     for step, batch_data in enumerate(loader):
-        batch_data: dict[str, Union[Type[MetaTensor], str]]
+        batch_data: dict[str, Union[MetaTensor, str]]
         # only take 1 batch
         inputs_l = batch_data["image"]
         only_image = 'label' not in batch_data
@@ -125,7 +125,8 @@ def train_epoch(
             random_ids = torch.from_numpy(np.random.choice(num_group, size=bs_size, replace=False))
 
         _loss = iter_slice_patch(
-            random_ids, inputs_l, labels_l, model, optimizer, scaler, only_image, loss_func, args, batch_data,
+            random_ids, inputs_l, labels_l, model,
+            optimizer, scaler, only_image, loss_func, args,
             step=step_cnt
         )
         bad_record.add(_loss, (batch_data['image_name'], batch_data['label_name']))
