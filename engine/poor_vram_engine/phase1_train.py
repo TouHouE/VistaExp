@@ -97,6 +97,7 @@ def train_epoch(
         model: Type[torch.nn.Module], loader: Type[torch.utils.data.DataLoader], optimizer: Type[torch.optim.Optimizer],
         scaler: Type[GradScaler], epoch: int, loss_func: Callable, args: Type[argparse.Namespace], **kwargs
 ):
+    print(f'Rank {args.rank} Epoch: {epoch} | Start Initial Training...')
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
