@@ -216,7 +216,7 @@ class WorstDataRecord(object):
     def _keep_maxlen(self):
         (
             self.metrics, self.image_name, self.label_name
-        ) = sorted(list(zip(self.metrics, self.image_name, self.label_name)))
+        ) = zip(*sorted(list(zip(self.metrics, self.image_name, self.label_name))))
         while len(self.metrics) > self.maxlen:
             _ = self.metrics.pop(0)
             _ = self.image_name.pop(0)
