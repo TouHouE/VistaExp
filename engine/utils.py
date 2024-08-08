@@ -19,6 +19,7 @@ import numpy as np
 import scipy.ndimage as ndimage
 import torch
 import wandb.wandb_run
+from icecream import ic
 
 from utils import io as UIO
 
@@ -214,6 +215,7 @@ class WorstDataRecord(object):
         self._keep_maxlen()
 
     def _keep_maxlen(self):
+        ic(len(self.metrics), len(self.imgae_name), len(self.label_name))
         (
             self.metrics, self.image_name, self.label_name
         ) = zip(*sorted(list(zip(self.metrics, self.image_name, self.label_name))))
