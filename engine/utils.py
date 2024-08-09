@@ -179,12 +179,12 @@ class WorstDataRecord(object):
         self.maxlen = args.bad_image_maxlen
 
     def rest(self):
-        self.metrics = list()
-        self.image_name = list()
-        self.label_name = list()
+        self.metrics = [-1]
+        self.image_name = [None]
+        self.label_name = [None]
 
     @torch.no_grad()
-    def add(self, metrics: torch.Tensor | float, file_name: list[tuple[str, str]]):
+    def add(self, metrics: torch.Tensor | float, image_name, label_name):
         """
 
         :param metrics:
@@ -198,15 +198,15 @@ class WorstDataRecord(object):
             self._iter_add(metrics, file_name)
             return
 
-        if metrics > min(float('inf'), float('inf'), *self.metrics):
+        if metrics > min(self.metrics):
             self.metrics.append(metrics)
-            self.image_name.append(file_name[0])
-            self.label_name.append(file_name[1])
+            self.image_name.append(image_name)
+            self.label_name.append(label_name)
         self._keep_maxlen()
 
     def _iter_add(self, metrics, file_name):
         for loss, (_image_name, _label_name) in zip(metrics.cpu(), file_name):
-            if loss < min(float('inf'), float('inf'), *self.metrics):
+            if loss < min(self.metrics):
                 continue
             self.metrics.append(loss)
             self.image_name.append(_image_name)
@@ -215,7 +215,7 @@ class WorstDataRecord(object):
         self._keep_maxlen()
 
     def _keep_maxlen(self):
-        ic(len(self.metrics), len(self.imgae_name), len(self.label_name))
+        ic(len(self.metrics), len(self.image_name), len(self.label_name))
         (
             self.metrics, self.image_name, self.label_name
         ) = zip(*sorted(list(zip(self.metrics, self.image_name, self.label_name))))

@@ -89,7 +89,7 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
         f_name = batch_data["image"].meta["filename_or_obj"]
         print(f"Rank: {args.rank}, Case: {f_name}, Acc: {acc:.4f}, N_prompts: {int(not_nans)} ")
         # prepare some element for update, I take those element as "Bad" quality data.
-        run_acc.add(acc, (batch_data['image_name'], batch_data['label_name']), )
+        run_acc.add(acc, image_name=batch_data['image_name'], label_name=batch_data['label_name'])
         acc = torch.tensor(acc).cuda(args.rank)
         not_nans = torch.tensor(not_nans).cuda(args.rank)
 
