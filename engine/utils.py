@@ -67,9 +67,9 @@ class AverageMeter(object):
         self.reset()
         self.args = args
         if args is not None:
-            self.LABELS = UIO.load_labels(args.get('label_map_path'))
+            self.LABELS = UIO.load_labels(getattr(args, 'label_map_path'))
         else:
-            self.Labels = None
+            self.LABELS = None
 
     pass
 
@@ -92,7 +92,7 @@ class AverageMeter(object):
 
     def add(
             self, val_acc: Optional[float] = None,
-            sample_name: Optional[tuple[str, str]] = None,
+            sample_name: Optional[list[str, str]] =None,
             buf_image: Optional[Type[np.ndarray]] = None,
             buf_pred: Optional[Type[np.ndarray]] = None,
             buf_label: Optional[Type[np.ndarray]] = None
@@ -100,7 +100,7 @@ class AverageMeter(object):
         """
 
         :param val_acc(Optional[float]): The metrics value for current sample.
-        :param sample_name:
+        :param sample_name
         :param buf_image:
         :param buf_pred:
         :param buf_label:
@@ -111,6 +111,7 @@ class AverageMeter(object):
         # Not so bad.
         if val_acc >= max(self.worst_val):
             return
+        ic(self.worst_val)
         self.worst_val.append(val_acc)
         self.worst_sample_name.append(sample_name)
         self.worst_image.append(buf_image)
@@ -120,10 +121,10 @@ class AverageMeter(object):
         (
             self.worst_val, self.worst_sample_name,
             self.worst_image, self.worst_pred, self.worst_label
-        ) = sorted(list(zip(
+        ) = map(list, (zip(*sorted(list(zip(
             self.worst_val, self.worst_sample_name,
             self.worst_image, self.worst_pred, self.worst_label
-        )), reverse=True)
+        )), reverse=True))))
 
         while len(self.worst_val) > 5:
             _ = self.worst_sample_name.pop(0)
@@ -180,22 +181,25 @@ class WorstDataRecord(object):
 
     def rest(self):
         self.metrics = [-1]
-        self.image_name = [None]
-        self.label_name = [None]
+        self.image_name = ["UNK"]
+        self.label_name = ["UNK"]
 
     @torch.no_grad()
     def add(self, metrics: torch.Tensor | float, image_name, label_name):
         """
 
         :param metrics:
-        :param file_name: [image_name, label_name]
+        :param image_name:
+        :param label_name:
         :return:
         """
         if self.maxlen <= 0:
             return
-        metrics = metrics.cpu().tolist()
+        if torch.is_tensor(metrics):
+            metrics = metrics.cpu().tolist()
+        ic(self.metrics)
         if not isinstance(metrics, float):
-            self._iter_add(metrics, file_name)
+            self._iter_add(metrics, [image_name, label_name])
             return
 
         if metrics > min(self.metrics):
@@ -215,10 +219,11 @@ class WorstDataRecord(object):
         self._keep_maxlen()
 
     def _keep_maxlen(self):
-        ic(len(self.metrics), len(self.image_name), len(self.label_name))
+        # ic(len(self.metrics), len(self.image_name), len(self.label_name))
+
         (
             self.metrics, self.image_name, self.label_name
-        ) = zip(*sorted(list(zip(self.metrics, self.image_name, self.label_name))))
+        ) = map(list, zip(*sorted(list(zip(self.metrics, self.image_name, self.label_name)))))
         while len(self.metrics) > self.maxlen:
             _ = self.metrics.pop(0)
             _ = self.image_name.pop(0)

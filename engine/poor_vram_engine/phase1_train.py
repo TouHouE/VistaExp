@@ -130,7 +130,7 @@ def train_epoch(
             optimizer, scaler, only_image, loss_func, args,
             step=step_cnt
         )
-        bad_record.add(_loss, (batch_data['image_name'], batch_data['label_name']))
+        bad_record.add(_loss, batch_data['image_name'], batch_data['label_name'])
         if args.distributed:
             loss_list = distributed_all_gather(
                 [_loss],

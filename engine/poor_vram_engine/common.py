@@ -63,6 +63,7 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
             inputs = inputs_l[patch_idx]
             # we only need the label for the center slice
             labels = labels_l[patch_idx]
+            # Collect wandb.log element
             buf_image.append(inputs[hf_slice].cpu().numpy())
             buf_label.append(labels.cpu().numpy())
 
@@ -75,8 +76,9 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
                 logit = torch.cat([_out['high_res_logits'] for _out in outputs], dim=0)
 
             y_pred = torch.stack(post_pred(decollate_batch(logit)), 0)
-
+            # Collect wandb.log element
             buf_pred.append(y_pred.cpu().numpy())
+            # All wandb.log element collection are done
             acc_batch = compute_dice(y_pred=y_pred, y=target)
             acc_sum, not_nans = (
                 torch.nansum(acc_batch).item(),
@@ -89,7 +91,10 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
         f_name = batch_data["image"].meta["filename_or_obj"]
         print(f"Rank: {args.rank}, Case: {f_name}, Acc: {acc:.4f}, N_prompts: {int(not_nans)} ")
         # prepare some element for update, I take those element as "Bad" quality data.
-        run_acc.add(acc, image_name=batch_data['image_name'], label_name=batch_data['label_name'])
+        run_acc.add(
+            acc, sample_name=[batch_data['image_name'], batch_data['label_name']],
+            buf_image=buf_image, buf_label=buf_label, buf_pred=buf_pred
+        )
         acc = torch.tensor(acc).cuda(args.rank)
         not_nans = torch.tensor(not_nans).cuda(args.rank)
 

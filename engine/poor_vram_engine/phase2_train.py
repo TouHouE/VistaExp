@@ -159,7 +159,7 @@ def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, 
         )
 
         _loss /= min(args.num_patch, n_inputs_patch)
-        bad_quality_recorder.add(_loss, (batch_data['image_name'], batch_data['label_name']))
+        bad_quality_recorder.add(_loss, batch_data['image_name'], batch_data['label_name'])
         if args.distributed:
             loss_list = distributed_all_gather(
                 [_loss],
