@@ -229,7 +229,7 @@ class WorstDataRecord(object):
             _ = self.image_name.pop(0)
             _ = self.label_name.pop(0)
 
-    def store(self, epoch):
+    def store(self, epoch: int):
         if self.maxlen <= 0:
             return
         store_folder = getattr(self.args, 'logdir', './')
@@ -238,7 +238,7 @@ class WorstDataRecord(object):
         pack = [{'loss': loss, 'image': image_path, 'label': label_path} for loss, image_path, label_path in
                 zip(self.metrics, self.image_name, self.label_name)]
         new_content = {
-            'epoch': epoch,
+            'epoch': int(epoch),
             'pack': pack
         }
         UIO.save_continue_json(path, new_content)
