@@ -232,7 +232,7 @@ class WorstDataRecord(object):
     def store(self, epoch):
         if self.maxlen <= 0:
             return
-        store_folder = self.args.get('logdir', './')
+        store_folder = getattr(self.args, 'logdir', './')
         path = os.path.join(store_folder, f'the_worse_sample.json')
 
         pack = [{'loss': loss, 'image': image_path, 'label': label_path} for loss, image_path, label_path in
