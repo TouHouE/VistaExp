@@ -261,7 +261,13 @@ def prepare_sam_val_input_cp_only(inputs, labels, args):
         - As the result, just become the one-hot encoding.
         - The shape is (nc - 1, H, W). nc - 1 is for skip background
     """
-    batch_labels = torch.stack([labels == unique_labels[i] for i in range(len(unique_labels))], dim=0).float()
+    buffer = [labels == unique_labels[i] for i in range(len(unique_labels))]
+    batch_labels = torch.stack(buffer, dim=0).float()
+    # if len(labels.shape) == 2:
+    #     batch_labels = torch.stack(buffer, dim=0).float()
+    # else:
+    #     batch_labels = torch.cat(buffer, dim=)
+
 
     prepared_input = [{"image": inputs, "original_size": tuple(labels.shape)}]
 
