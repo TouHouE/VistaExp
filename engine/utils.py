@@ -11,10 +11,12 @@
 import argparse
 import functools
 import os
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
 from typing import Type, Optional
 import inspect
 import gc
 
+import monai
 import numpy as np
 import scipy.ndimage as ndimage
 import torch
@@ -244,6 +246,30 @@ class WorstDataRecord(object):
         UIO.save_continue_json(path, new_content)
 
 
+class RandomPermute:
+
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.do_permute = self.args.random_permute
+        self.permute_prob = self.args.permute_prob
+
+    def __call__(self, image: torch.Tensor | monai.data.MetaTensor, label: Optional = None):
+        if not self.do_permute:
+            return image, label
+        if (rand_var := torch.rand(1)) > self.permute_prob:
+            return image, label
+        print(f'Do random axes from HWS -> ', end='')
+        n_axes = len(image.shape)
+        new_indices = torch.arange(n_axes)
+        new_HWS = torch.randperm(3)
+        print(''.join("HWS"[i] for i in new_HWS))
+        new_indices[-3:] = new_HWS + n_axes - 3
+        image = image.permute(*new_indices).continuous()
+        if label is not None:
+            label = label.permute(*new_indices).continuous()
+        return image, label
+
+
 def distributed_all_gather(
         tensor_list, valid_batch_size=None, out_numpy=False, world_size=None, no_barrier=False, is_valid=None
 ):
@@ -285,6 +311,9 @@ def save_checkpoint(model, epoch, args, filename="model.pt", best_acc=0, optimiz
     torch.save(save_dict, filename)
     print("Saving checkpoint", filename)
 
+"""
+ Those method are reference by accelerate module, used to automatic decision executable batch size.
+"""
 
 def should_reduce_batch_size(exception: Exception) -> bool:
     """
