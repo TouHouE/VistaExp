@@ -15,10 +15,11 @@ from torch.cuda.amp import GradScaler, autocast
 from icecream import ic
 import wandb
 
-from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint, WorstDataRecord
+from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
 from utils import model_input as ModelInputer, assign_device
 from utils import terminate as Terminate
 from utils.decorator import show_exception_file
+from logger import WorstDataRecord
 
 
 def prompt_adjust_mask(
@@ -66,17 +67,6 @@ def prompt_adjust_mask(
             else:
                 data[bidx]['point_coords'] = torch.cat([prev_cp, _point_coords], dim=1)
                 data[bidx]['point_labels'] = torch.cat([previous_point_labels[bidx], _point_labels], dim=1)
-            # point_labels.append(_point_labels)
-            # point_coords.append(_point_coords)
-        #
-        # for bidx in range(len(data)):
-        #     if previous_point_coords[bidx] is None:
-        #         data[bidx]['point_coords'] = point_coords[bidx]
-        #         data[bidx]['point_labels'] = point_labels[bidx]
-        #     else:
-        #         data[bidx]['point_coords'] = torch.cat([previous_point_coords[bidx], point_coords[bidx]], dim=1)
-        #         data[bidx]['point_labels'] = torch.cat([previous_point_labels[bidx], point_labels[bidx]], dim=1)
-    
     return loss
 
 
@@ -129,22 +119,26 @@ def iter_slice_patch(
     return _loss
 
 
-def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, run, args):
+def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, run, args, **kwargs):
     print(f'Prompt Adjust training, current batch_size: {batch_size}')
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
-    bad_quality_recorder = WorstDataRecord(args)
+    bad_quality_recorder = WorstDataRecord(args, just_name=True)
+    permuter = kwargs.get('permuter')
     # we need to make sure the number of 2.5D input is an odd number.
     assert args.roi_z_iter % 2 == 1
     n_slice = args.roi_z_iter
     pd = (n_slice // 2, n_slice // 2)
 
     for idx, batch_data in enumerate(loader):
-        # only take 1 batch
+        # Take all required data and do permuter.
         inputs_l = batch_data['image']
         image_only = 'label' not in batch_data
         labels_l: torch.Tensor = batch_data.get('label', torch.zeros_like(inputs_l))
+        inputs_l, labels_l = permuter(inputs_l, labels_l)
+
+        # Prepare to iter num_patch
         inputs_l = F.pad(inputs_l, pd, "constant", 0).squeeze()
         labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
         inputs_patch = inputs_l.unfold(-1, n_slice, 1)

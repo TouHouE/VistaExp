@@ -11,10 +11,10 @@ import numpy as np
 from monai.data import MetaTensor
 import wandb
 
-from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint, WorstDataRecord
+from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
 from utils import model_input as ModelInputer
 from utils import terminate as Terminate
-
+from logger import WorstDataRecord
 
 def iter_slice_patch(
         slice_ids: Type[torch.Tensor] | Type[MetaTensor],
@@ -101,7 +101,8 @@ def train_epoch(
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
-    bad_record = WorstDataRecord(args)
+    bad_record = WorstDataRecord(args, just_name=True)
+    permuter = kwargs.get('permuter')
     assert args.roi_z_iter % 2 == 1
     n_slice = args.roi_z_iter
     pd = (n_slice // 2, n_slice // 2)
@@ -113,6 +114,7 @@ def train_epoch(
         inputs_l = batch_data["image"]
         only_image = 'label' not in batch_data
         labels_l = batch_data.get("label", torch.zeros_like(inputs_l))
+        inputs_l, labels_l = permuter(inputs_l, labels_l)
         # Remove original batch_size and the channel axes. Then swap the slice-axis at first
         labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
         # Only image need padding for make sure its shape is same as original shape.
