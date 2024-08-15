@@ -52,6 +52,10 @@ def get_args():
                         help='setting this into monai.metrics.DiceMetrics\'s include_background argument')
     parser.add_argument('--label_map_path', type=str, default='./res/labels_id.json')
     parser.add_argument('--bad_image_maxlen', type=int, required=False, default=-1)
+    parser.add_argument('--random_permute', action='store_true', default=False)
+    parser.add_argument('--permute_prob', type=float, default=.5)
+    parser.add_argument('--worst_mode', choices=['min', 'max'], default=None)
+
 
     parser.add_argument("--checkpoint", default=None, help="start training from saved checkpoint")
     parser.add_argument("--logdir", default="vista2pt5d", type=str, help="directory to save the tensorboard logs")
