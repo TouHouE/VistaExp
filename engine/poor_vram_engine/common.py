@@ -18,7 +18,7 @@ import wandb
 from icecream import ic
 
 from engine import utils as EU
-from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
+from engine.utils import AverageMeter, RandomPermute, distributed_all_gather, save_checkpoint
 from engine.poor_vram_engine import phase1_train as PT1
 from engine.poor_vram_engine import phase2_train as PT2
 from utils import model_input as ModelInputer
@@ -117,6 +117,7 @@ def run_training(
         scheduler=None, start_epoch=0, post_label=None, post_pred=None,
 ):
     writer, run, scaler, stage, train_function = None, None, None, 'init', PT1.train_epoch
+    axesPermuter = RandomPermute(args)
     step_cnt = 0
 
     if args.logdir is not None and args.rank == 0 and not args.test_mode:
@@ -153,7 +154,8 @@ def run_training(
             train_function = EU.find_executable_batch_size(PT2.train_epoch, starting_batch_size=args.quasi_batch_size)
             stage = 'adjust'
         train_loss = train_function(
-            model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func, args=args, run=run
+            model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func, args=args,
+            run=run, permuter=axesPermuter
         )
         # Training Done.
 
