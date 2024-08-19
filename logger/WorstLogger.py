@@ -35,11 +35,11 @@ class WorstDataRecord(object):
 
     def __init__(self, args, just_name: bool):
         self.args = args
+        self.just_name = just_name
         self.rest()
         self.maxlen = args.bad_image_maxlen
         self.mode = getattr(args, 'worst_mode', 'max')
         self.sorted = partial(sorted, reverse=self.mode == 'max')
-        self.just_name = just_name
         self.LABELS = UIO.load_labels(getattr(args, 'label_map_path'))
 
     def rest(self):

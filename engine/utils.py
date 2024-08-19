@@ -17,6 +17,7 @@ import inspect
 import gc
 
 import monai
+from monai import transforms as MT
 import numpy as np
 import scipy.ndimage as ndimage
 import torch
@@ -250,8 +251,11 @@ class RandomPermute:
 
     def __init__(self, args: argparse.Namespace):
         self.args = args
+        img_size = args.sam_image_size
         self.do_permute = self.args.random_permute
         self.permute_prob = self.args.permute_prob
+        self.image_keeper = MT.Compose([MT.ResizeWithPadOrCrop(spatial_size=(img_size, img_size, -1), method='end', mode='minimum')])
+        self.label_keeper = MT.Compose([MT.ResizeWithPadOrCrop(spatial_size=(img_size, img_size, -1), method='end', mode='constant', value=0)])
 
     def __call__(self, image: torch.Tensor | monai.data.MetaTensor, label: Optional = None):
         if not self.do_permute:
@@ -262,11 +266,15 @@ class RandomPermute:
         n_axes = len(image.shape)
         new_indices = torch.arange(n_axes)
         new_HWS = torch.randperm(3)
-        print(''.join("HWS"[i] for i in new_HWS))
+        print(''.join("HWS"[i] for i in new_HWS))        
         new_indices[-3:] = new_HWS + n_axes - 3
-        image = image.permute(*new_indices).continuous()
+        ic(image.shape)    
+        image = image.permute(*new_indices)
+        image = torch.stack([self.image_keeper(_image) for _image in image], dim=0)
         if label is not None:
-            label = label.permute(*new_indices).continuous()
+            ic(label.shape)
+            label = label.permute(*new_indices)
+            label = torch.stack([self.label_keeper(_label) for _label in label], dim=0)
         return image, label
 
 

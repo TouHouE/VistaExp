@@ -107,6 +107,7 @@ def train_epoch(
     n_slice = args.roi_z_iter
     pd = (n_slice // 2, n_slice // 2)
     step_cnt = 0
+    final_epoch = args.iterative_training_warm_up_epoch
 
     for step, batch_data in enumerate(loader):
         batch_data: dict[str, Union[MetaTensor, str]]
@@ -114,6 +115,7 @@ def train_epoch(
         inputs_l = batch_data["image"]
         only_image = 'label' not in batch_data
         labels_l = batch_data.get("label", torch.zeros_like(inputs_l))
+        # if epoch > final_epoch / 2:
         inputs_l, labels_l = permuter(inputs_l, labels_l)
         # Remove original batch_size and the channel axes. Then swap the slice-axis at first
         labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
