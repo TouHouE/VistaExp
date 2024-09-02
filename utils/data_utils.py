@@ -12,7 +12,9 @@
 import copy
 import math
 import os
-
+import logging
+LOG_FORMAT: str = '[%(asctime)s %(filename)s:%(lineno)s %(funcname)s] %(message)s'
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 import numpy as np
 import torch
 from monai import data, transforms
@@ -25,8 +27,10 @@ from monai.transforms import (
     ScaleIntensityRanged,
     Spacingd,
 )
-from monai import transforms as MF
+from monai import transforms as MT
 from icecream import ic
+
+from utils import transforms as MyTrans
 
 
 def get_transforms(args):
@@ -35,10 +39,10 @@ def get_transforms(args):
             RandRotate90d(keys=["image", "label"], prob=0.10, max_k=3, allow_missing_keys=True),
             RandShiftIntensityd(keys=["image"], offsets=0.10, prob=0.10)
         ])
-        print("using data augmentation")
+        logging.info("using data augmentation")
     else:
         random_transforms = ([])
-        print("No data augmentation")
+        logging.info("No data augmentation")
 
     return random_transforms
 
@@ -84,27 +88,26 @@ def get_ds(args, phase, datalist, transform) -> data.Dataset | data.CacheDataset
 def get_loader(args):
     train_files, val_files, test_files = split_data(args)
     random_transforms = get_transforms(args)
-    resizer = MF.ResizeWithPadOrCropd(keys=['image', 'label'], spatial_size=(args.sam_image_size, args.sam_image_size, 320), allow_missing_keys=True)
-    spacer = Spacingd(keys=["image", "label"], pixdim=args.pixdim, mode=("bilinear", "nearest"), allow_missing_keys=True)
-
-    if args.poor_mode:
-        print(f'Resizer change from {resizer.get_transform_info()} with {resizer.padder.padder.spatial_size}', end=' => ')
-        resizer = MF.SpatialPadd(
-            keys=['image', 'label'], allow_missing_keys=True,
-            spatial_size=(args.sam_image_size, args.sam_image_size, -1), mode='minimum', method='end'
-        )
-        print(f'{resizer.get_transform_info()} with {resizer.padder.spatial_size}')
+    load_keys = ['image', 'label', 'plaque', 'padding_bg']
+    logging.info(f'Current keys: {load_keys}')
+    resizer = MT.ResizeWithPadOrCropd(
+        keys=load_keys,
+        spatial_size=(args.sam_image_size, args.sam_image_size, -1), method='end', mode='minimum',
+        allow_missing_keys=True
+    )
+    spacer = Spacingd(keys=load_keys, pixdim=args.pixdim, mode=("bilinear", "nearest"), allow_missing_keys=True)
 
     if args.no_spacing:
-        spacer = MF.Identityd(keys=['image', 'label'], allow_missing_keys=True)
-
+        logging.info(f'Remove Spacing.')
+        spacer = MT.Identityd(keys=load_keys, allow_missing_keys=True)
 
     train_transform = transforms.Compose(
         [
-            LoadImaged(keys=["image", "label"], image_only=True, allow_missing_keys=True),
-            EnsureChannelFirstd(keys=["image", "label"], allow_missing_keys=True),
-            Orientationd(keys=["image", "label"], axcodes="RAS", allow_missing_keys=True),
+            LoadImaged(keys=load_keys, image_only=True, allow_missing_keys=True),
+            EnsureChannelFirstd(keys=load_keys, allow_missing_keys=True),
+            Orientationd(keys=load_keys, axcodes="RAS", allow_missing_keys=True),
             spacer, resizer,
+            MyTrans.AdditionalInfoExpanderd(keys=['padding_mask'], allow_missing_keys=True),
             ScaleIntensityRanged(
                 keys=["image"], a_min=args.a_min, a_max=args.a_max, b_min=args.b_min, b_max=args.b_max, clip=True
             ),
@@ -114,10 +117,11 @@ def get_loader(args):
 
     val_transform = transforms.Compose(
         [
-            LoadImaged(keys=["image", "label"], image_only=True, allow_missing_keys=True),
-            EnsureChannelFirstd(keys=["image", "label"], allow_missing_keys=True),
-            Orientationd(keys=["image", "label"], axcodes="RAS", allow_missing_keys=True),
+            LoadImaged(keys=load_keys, image_only=True, allow_missing_keys=True),
+            EnsureChannelFirstd(keys=load_keys, allow_missing_keys=True),
+            Orientationd(keys=load_keys, axcodes="RAS", allow_missing_keys=True),
             spacer, resizer,
+            MyTrans.AdditionalInfoExpanderd(keys=['padding_mask'], allow_missing_keys=True),
             ScaleIntensityRanged(
                 keys=["image"], a_min=args.a_min, a_max=args.a_max, b_min=args.b_min, b_max=args.b_max, clip=True
             ),
@@ -174,7 +178,6 @@ def split_data(args):
             list_train = list_train[:-l]
         
     if ic(args.test_mode):
-
         list_train = list_train[:1]
         list_valid = list_valid[:1]
         list_test = list_test[:1]
@@ -196,7 +199,17 @@ def split_data(args):
         if (not os.path.exists(str_img)) or (not os.path.exists(str_seg)):
             continue
 
-        files.append({"image": str_img, "label": str_seg, 'image_name': str_img, 'label_name': str_seg})
+        pack = {
+            'image': str_img,
+            'label': str_seg,
+            'padding_bg': str_img,
+            'image_name': str_img,
+            'label_name': str_seg
+        }
+        if (pname := list_train[_i].get('plaque')) is not None:
+            pack['plaque'] = os.path.join(data_dir, pname)
+
+        files.append(pack)
 
     train_files = copy.deepcopy(files)
 
