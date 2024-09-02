@@ -11,12 +11,14 @@ import numpy as np
 from monai.data import MetaTensor
 import wandb
 
-from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
+from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint, select_random_ids, find_executable_batch_size
 from utils import model_input as ModelInputer
 from utils import terminate as Terminate
 from logger import WorstDataRecord
 
+
 def iter_slice_patch(
+        batch_size: int,
         slice_ids: Type[torch.Tensor] | Type[MetaTensor],
         inputs_l: Type[torch.Tensor] | Type[MetaTensor],
         labels_l: Type[torch.Tensor] | Type[MetaTensor],
@@ -39,7 +41,7 @@ def iter_slice_patch(
     slice_iter_loss = torch.as_tensor(.0).cuda(args.rank)
 
     do_vae = args.vae
-    pseudo_bs = args.quasi_batch_size
+    pseudo_bs = batch_size
     seq_slice_ids = slice_ids.split(pseudo_bs)
     step_cnt = kwargs.get('step_cnt', 0)
 
@@ -90,6 +92,7 @@ def iter_slice_patch(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), limit)
             optimizer.step()
         slice_iter_loss += loss.detach()
+    args.quasi_batch_size = pseudo_bs
     return slice_iter_loss / len(slice_ids)
 
 
@@ -108,28 +111,25 @@ def train_epoch(
     pd = (n_slice // 2, n_slice // 2)
     step_cnt = 0
     final_epoch = args.iterative_training_warm_up_epoch
+    adpt_iter_slice_patch = find_executable_batch_size(iter_slice_patch, args.quasi_batch_size)
 
     for step, batch_data in enumerate(loader):
-        batch_data: dict[str, Union[MetaTensor, str]]
+        batch_data: dict[str, Union[MetaTensor, str, range]]
         # only take 1 batch
         inputs_l = batch_data["image"]
+        select_range: range = batch_data.get('range', range(0, inputs_l.shape[-1]))
         only_image = 'label' not in batch_data
-        labels_l = batch_data.get("label", torch.zeros_like(inputs_l))
-        # if epoch > final_epoch / 2:
+        labels_l = batch_data.get("label", torch.zeros_like(inputs_l)) * batch_data['padding_mask']
         inputs_l, labels_l = permuter(inputs_l, labels_l)
         # Remove original batch_size and the channel axes. Then swap the slice-axis at first
         labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
         # Only image need padding for make sure its shape is same as original shape.
         inputs_l = F.pad(inputs_l, pd, "constant", 0)
         inputs_l = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()
-        # ic(inputs_l.shape)
-
-        if (bs_size := args.num_patch) >= (num_group := inputs_l.shape[0]):
-            random_ids = torch.arange(num_group)
-        else:
-            random_ids = torch.from_numpy(np.random.choice(num_group, size=bs_size, replace=False))
-
-        _loss = iter_slice_patch(
+        random_ids: torch.Tensor = select_random_ids(
+            select_range, args
+        )
+        _loss = adpt_iter_slice_patch(
             random_ids, inputs_l, labels_l, model,
             optimizer, scaler, only_image, loss_func, args,
             step=step_cnt
