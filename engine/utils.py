@@ -11,8 +11,13 @@
 import argparse
 import functools
 import os
+
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
-from typing import Type, Optional
+import logging
+
+LOG_FORMAT = '[%(asctime)s %(levelname)s %(filename)s:%(lineno)d (%(funcName)s)] %(message)s'
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+from typing import Type, Optional, Callable, Literal
 import inspect
 import gc
 
@@ -22,9 +27,19 @@ import numpy as np
 import scipy.ndimage as ndimage
 import torch
 import wandb.wandb_run
+from wandb.wandb_run import Run
 from icecream import ic
 
 from utils import io as UIO
+
+
+def select_random_ids(selectable_range: range, args: argparse.Namespace) -> torch.Tensor:
+    if (n_sample := args.num_patch) >= (selectable_size := len(selectable_range)):
+        return torch.as_tensor(selectable_range)
+
+    return torch.from_numpy(
+        np.random.choice(selectable_size, size=n_sample, replace=False)
+    )
 
 
 def change_drop_prob(args, epoch) -> bool:
@@ -95,7 +110,7 @@ class AverageMeter(object):
 
     def add(
             self, val_acc: Optional[float] = None,
-            sample_name: Optional[list[str, str]] =None,
+            sample_name: Optional[list[str, str]] = None,
             buf_image: Optional[Type[np.ndarray]] = None,
             buf_pred: Optional[Type[np.ndarray]] = None,
             buf_label: Optional[Type[np.ndarray]] = None
@@ -178,8 +193,10 @@ class RandomPermute:
         img_size = args.sam_image_size
         self.do_permute = self.args.random_permute
         self.permute_prob = self.args.permute_prob
-        self.image_keeper = MT.Compose([MT.ResizeWithPadOrCrop(spatial_size=(img_size, img_size, -1), method='end', mode='minimum')])
-        self.label_keeper = MT.Compose([MT.ResizeWithPadOrCrop(spatial_size=(img_size, img_size, -1), method='end', mode='constant', value=0)])
+        self.image_keeper = MT.Compose(
+            [MT.ResizeWithPadOrCrop(spatial_size=(img_size, img_size, -1), method='end', mode='minimum')])
+        self.label_keeper = MT.Compose(
+            [MT.ResizeWithPadOrCrop(spatial_size=(img_size, img_size, -1), method='end', mode='constant', value=0)])
 
     def __call__(self, image: torch.Tensor | monai.data.MetaTensor, label: Optional = None):
         if not self.do_permute:
@@ -190,9 +207,9 @@ class RandomPermute:
         n_axes = len(image.shape)
         new_indices = torch.arange(n_axes)
         new_HWS = torch.randperm(3)
-        print(''.join("HWS"[i] for i in new_HWS))        
+        print(''.join("HWS"[i] for i in new_HWS))
         new_indices[-3:] = new_HWS + n_axes - 3
-        ic(image.shape)    
+        ic(image.shape)
         image = image.permute(*new_indices)
         image = torch.stack([self.image_keeper(_image) for _image in image], dim=0)
         if label is not None:
@@ -200,6 +217,77 @@ class RandomPermute:
             label = label.permute(*new_indices)
             label = torch.stack([self.label_keeper(_label) for _label in label], dim=0)
         return image, label
+
+
+class TrainingAlgoManager:
+    def __init__(
+            self, algo_map: dict[int, Callable],
+            mode: Literal['min', 'max'] = 'max', patience: int = 10,
+            enable_eta: float = 1e-4, eta_mode: Literal['rel', 'abs'] = 'rel',
+            cooldown: int = 0, run: Optional[Run] = None
+    ):
+        self.algo_map = algo_map
+        self.mode = mode
+        self.patience = patience
+        self.threshold = enable_eta
+        self.threshold_mode = eta_mode
+        self.cooldown = cooldown
+        self.cooldown_counter = 0
+        self.current_stage = 0
+        self.final_stage = max(algo_map.keys())
+        self.best = float('inf') if mode == 'min' else float('-inf')
+        self.num_bad_epochs = 0
+        self.run = run
+
+    def is_better(self, metrics, best):
+        metrics = float(metrics)
+
+        if self.mode == 'min' and self.threshold_mode == 'rel':
+            rel_eps = 1 - self.threshold
+            return metrics < best * rel_eps
+        if self.mode == 'min' and self.threshold_mode == 'abs':
+            return metrics < best - self.threshold
+        if self.mode == 'max' and self.threshold_mode == 'rel':
+            rel_eps = 1 + self.threshold
+            return metrics > best * rel_eps
+
+        # when mode == 'max' and threshold_mode == 'abs'
+        return metrics > best + self.threshold
+
+    def next_algo(self, metrics: float, last_epoch: Optional[int] = None) -> Callable:
+        if self.current_stage == self.final_stage:
+            logging.info(f'Next stage index is: {self.current_stage}')
+            return self.algo_map[self.current_stage]
+
+        if self.is_better(metrics, self.best):
+            self.best = metrics
+            self.num_bad_epochs = 0
+        else:
+            self.num_bad_epochs += 1
+
+        if self.in_cooldown:
+            self.cooldown_counter -= 1
+            self.num_bad_epochs = 0
+
+        if self.num_bad_epochs > self.patience:
+            self.current_stage += 1
+            self.cooldown_counter = self.cooldown
+            self.num_bad_epochs = 0
+        self.log({
+            'epoch': last_epoch,
+            'stage': self.current_stage
+        })
+        logging.info(f'Next stage index is: {self.current_stage}')
+        return self.algo_map[self.current_stage]
+
+    @property
+    def in_cooldown(self):
+        return self.cooldown_counter > 0
+
+    def log(self, pack: dict) -> None:
+        if self.run is None:
+            return
+        self.run.log(pack)
 
 
 def distributed_all_gather(
@@ -243,9 +331,11 @@ def save_checkpoint(model, epoch, args, filename="model.pt", best_acc=0, optimiz
     torch.save(save_dict, filename)
     print("Saving checkpoint", filename)
 
+
 """
  Those method are reference by accelerate module, used to automatic decision executable batch size.
 """
+
 
 def should_reduce_batch_size(exception: Exception) -> bool:
     """
@@ -309,6 +399,7 @@ def find_executable_batch_size(function: callable = None, starting_batch_size: i
                 f"Batch size was passed into `{function.__name__}` as the first argument when called."
                 f"Remove this as the decorator already does so: `{function.__name__}({arg_str})`"
             )
+        logging.info(f'Initial batch_size as: {starting_batch_size}')
         while True:
             if batch_size == 0:
                 raise RuntimeError("No executable batch size found, reached zero.")
@@ -319,6 +410,7 @@ def find_executable_batch_size(function: callable = None, starting_batch_size: i
                     gc.collect()
                     torch.cuda.empty_cache()
                     batch_size //= 2
+                    logging.warning(f'Scale batch size to {batch_size}')
                 else:
                     raise
 
