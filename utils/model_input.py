@@ -1,12 +1,14 @@
 from argparse import Namespace
 from copy import deepcopy
 import random
-from typing import Type, Optional
+from typing import Type, Optional, Tuple, List, Dict, Any
 
 import torch
 import numpy as np
 from monai.data import MetaTensor
 from icecream import ic
+from numpy import ndarray
+from torch import Tensor
 
 from models.vista.modeling import Vista2pt5D
 from utils import assign_device, get_unique_labels
@@ -127,7 +129,9 @@ def generate_point_prompt(
     return point_coords, point_label
 
 
-def prepare_sam_training_input(inputs: torch.Tensor, labels: torch.Tensor, args: Namespace, model: Type[Vista2pt5D]):
+def prepare_sam_training_input(
+        inputs: torch.Tensor | MetaTensor, labels: torch.Tensor | MetaTensor, args: Namespace,
+        model: Type[Vista2pt5D]):
     """
 
     @param inputs: B x roi_z x H x W
@@ -220,35 +224,64 @@ def prepare_sam_training_input(inputs: torch.Tensor, labels: torch.Tensor, args:
     return prepared_input, assign_device(batch_labels, args.rank), batch_labels_, False
 
 
-def prepare_sam_test_input(inputs, labels, args, previous_pred=None):
-    unique_labels = torch.tensor([i for i in range(1, args.nc)]).cuda(args.rank)
+def prepare_sam_test_input(inputs, labels, args, previous_pred=None) -> tuple[list[dict], Tensor, Tensor]:
+    """
 
+    :param inputs:
+    :param labels:
+    :param args:
+    :param previous_pred:
+    :return: a list of input data, batch labels and labels
+    """
+    unique_labels = torch.tensor([i for i in range(1, args.nc)])
+    unique_labels = assign_device(unique_labels, args.rank)
     # preprocess make the size of lable same as high_res_logit
-    batch_labels = torch.stack([labels == unique_labels[i] for i in range(len(unique_labels))], dim=0).float()
+    batch_labels = torch.stack([labels == unique_labels[i] for i in range(len(unique_labels))], dim=1).float()
+    ic(labels.shape)
+    ic(batch_labels.shape)
+    ic(inputs.shape)
+    prepared_input = list()
 
-    prepared_input = [{"image": inputs, "original_size": tuple(labels.shape)}]
-    if args.label_prompt:
-        labels_prompt = unique_labels.unsqueeze(-1)
-        prepared_input[0].update({"labels": labels_prompt})
+    for _inputs, _labels, _batch_labels in zip(inputs, labels, batch_labels):
+        pack = {
+            'image': _inputs,
+            'original_size': tuple(_labels.shape)
+        }
+        if args.label_prompt:
+            pack['labels'] = unique_labels.unsqueeze(-1)
+        if args.point_prompt:
+            point_coords, point_labels = generate_point_prompt(
+                _batch_labels, args,
+                points_pos=args.points_val_pos, points_neg=args.points_val_neg,
+                previous_pred=previous_pred
+            )
+            pack['point_coords'] = point_coords
+            pack['point_labels'] = point_labels
+        prepared_input.append(pack)
 
-    if args.point_prompt:
-        point_coords, point_labels = generate_point_prompt(
-            batch_labels,
-            args,
-            points_pos=args.points_val_pos,
-            points_neg=args.points_val_neg,
-            previous_pred=previous_pred,
-        )
-        prepared_input[0].update({"point_coords": point_coords, "point_labels": point_labels})
+    # prepared_input = [{"image": inputs, "original_size": tuple(labels.shape)}]
+    # if args.label_prompt:
+    #     labels_prompt = unique_labels.unsqueeze(-1)
+    #     prepared_input[0].update({"labels": labels_prompt})
+    #
+    # if args.point_prompt:
+    #     point_coords, point_labels = generate_point_prompt(
+    #         batch_labels,
+    #         args,
+    #         points_pos=args.points_val_pos,
+    #         points_neg=args.points_val_neg,
+    #         previous_pred=previous_pred,
+    #     )
+    #     prepared_input[0].update({"point_coords": point_coords, "point_labels": point_labels})
 
-    return prepared_input, batch_labels.unsqueeze(1).cuda(args.rank), unique_labels
+    return prepared_input, assign_device(batch_labels.unsqueeze(1), args.rank), unique_labels
 
 
 def prepare_sam_val_input_cp_only(inputs, labels, args):
     """
 
-    @param inputs: A 3d tensor with shape roi_z_iter x H x W
-    @param labels: A 2d tensor with shape H x W
+    @param inputs: A 3d tensor with shape B x roi_z_iter x H x W
+    @param labels: A 2d tensor with shape B x H x W
     @param args:
     @return:
     """
@@ -262,16 +295,19 @@ def prepare_sam_val_input_cp_only(inputs, labels, args):
         - The shape is (nc - 1, H, W). nc - 1 is for skip background
     """
     buffer = [labels == unique_labels[i] for i in range(len(unique_labels))]
-    batch_labels = torch.stack(buffer, dim=0).float()
-    # if len(labels.shape) == 2:
-    #     batch_labels = torch.stack(buffer, dim=0).float()
-    # else:
-    #     batch_labels = torch.cat(buffer, dim=)
+    batch_labels = torch.stack(buffer, dim=1).float()
 
+    prepared_input = list()
+    for _inputs, _labels in zip(inputs, labels):
+        pack = {
+            'image': _inputs,
+            'original_size': tuple(labels.shape),
+            'labels': unique_labels.unsqueeze(-1)
+        }
+        prepared_input.append(pack)
+    # prepared_input = [{"image": inputs, "original_size": tuple(labels.shape)}]
+    #
+    # labels_prompt = unique_labels.unsqueeze(-1)
+    # prepared_input[0].update({"labels": labels_prompt})
 
-    prepared_input = [{"image": inputs, "original_size": tuple(labels.shape)}]
-
-    labels_prompt = unique_labels.unsqueeze(-1)
-    prepared_input[0].update({"labels": labels_prompt})
-
-    return prepared_input, batch_labels.unsqueeze(1).cuda(args.rank), unique_labels
+    return prepared_input, assign_device(batch_labels.unsqueeze(1), args.rank), unique_labels
