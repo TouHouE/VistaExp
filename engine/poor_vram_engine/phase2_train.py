@@ -15,7 +15,7 @@ from torch.cuda.amp import GradScaler, autocast
 from icecream import ic
 import wandb
 
-from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint
+from engine.utils import AverageMeter, distributed_all_gather, save_checkpoint, find_executable_batch_size
 from utils import model_input as ModelInputer, assign_device
 from utils import terminate as Terminate
 from utils.decorator import show_exception_file
@@ -71,13 +71,14 @@ def prompt_adjust_mask(
 
 
 def iter_slice_patch(
+        batch_size: int,
         slice_ids: torch.Tensor, inputs_l: torch.Tensor, labels_l: torch.Tensor,
         model, optimizer, scaler, image_only, loss_func,
         args, **kwargs
 ):
     _loss = assign_device(torch.tensor(0.0), args.rank)
     do_vae = args.vae
-    pseudo_bs = kwargs.get('workable_bs', args.quasi_batch_size)
+    pseudo_bs = batch_size
     seq_slice_ids = slice_ids.split(pseudo_bs)
     if args.distributed:
         image_embeddings_getter: Callable = model.module.get_image_embeddings
@@ -119,13 +120,14 @@ def iter_slice_patch(
     return _loss
 
 
-def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, run, args, **kwargs):
-    print(f'Prompt Adjust training, current batch_size: {batch_size}')
+def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args, **kwargs):
+    print(f'Prompt Adjust training...')
     model.train()
     start_time = time.time()
     run_loss = AverageMeter()
     bad_quality_recorder = WorstDataRecord(args, just_name=True)
     permuter = kwargs.get('permuter')
+    adpt_iter_slice_patch = find_executable_batch_size(iter_slice_patch, args.quasi_batch_size)
     # we need to make sure the number of 2.5D input is an odd number.
     assert args.roi_z_iter % 2 == 1
     n_slice = args.roi_z_iter
@@ -135,7 +137,7 @@ def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, 
         # Take all required data and do permuter.
         inputs_l = batch_data['image']
         image_only = 'label' not in batch_data
-        labels_l: torch.Tensor = batch_data.get('label', torch.zeros_like(inputs_l))
+        labels_l: torch.Tensor = batch_data.get('label', torch.zeros_like(inputs_l)) * batch_data['padding_mask']
         inputs_l, labels_l = permuter(inputs_l, labels_l)
 
         # Prepare to iter num_patch
@@ -148,8 +150,8 @@ def train_epoch(batch_size, model, loader, optimizer, scaler, epoch, loss_func, 
         ids_size = min(args.num_patch, n_inputs_patch)
         random_ids = torch.from_numpy(np.random.choice(n_inputs_patch, size=ids_size, replace=False))
 
-        _loss = iter_slice_patch(
-            random_ids, inputs_patch, labels_l, model, optimizer, scaler, image_only, loss_func, args, workable_bs=batch_size
+        _loss = adpt_iter_slice_patch(
+            random_ids, inputs_patch, labels_l, model, optimizer, scaler, image_only, loss_func, args
         )
 
         _loss /= min(args.num_patch, n_inputs_patch)
