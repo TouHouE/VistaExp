@@ -151,7 +151,7 @@ def run_training(
         # Start Training
         # we don't perform iterative training for the first args.iterative_training_warm_up_epoch epochs
         if epoch > args.iterative_training_warm_up_epoch and stage == 'init':
-            train_function = EU.find_executable_batch_size(PT2.train_epoch, starting_batch_size=args.quasi_batch_size)
+            train_function = PT2.train_epoch
             stage = 'adjust'
         train_loss = train_function(
             model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func, args=args,
