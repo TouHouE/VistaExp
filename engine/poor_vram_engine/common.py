@@ -59,25 +59,31 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
         not_nans_total = 0.0
         # We only loop the center args.num_patch_val slices to save val time
         for patch_idx in val_patch_ids:
-            inputs = inputs_l[patch_idx]
+            inputs = inputs_l[patch_idx].unsqueeze(0)
             # we only need the label for the center slice
-            labels = labels_l[patch_idx]
+            labels = labels_l[patch_idx].unsqueeze(0)
             # Collect wandb.log element
-            buf_image.append(inputs[hf_slice].cpu().numpy())
-            buf_label.append(labels.cpu().numpy())
+            ic(inputs.shape)
+            buf_image.append(inputs[0, hf_slice].cpu().numpy())
+            buf_label.append(labels[0].cpu().numpy())
 
             data, target, _ = ModelInputer.prepare_sam_val_input_cp_only(
                 ModelInputer.assign_device(inputs, args.rank), ModelInputer.assign_device(labels, args.rank), args
             )
-
+            ic(len(data))
+            
             with autocast(enabled=args.amp):
                 outputs = model(data)
+                ic(outputs[0]['high_res_logits'].shape)
                 logit = torch.cat([_out['high_res_logits'] for _out in outputs], dim=0)
-
-            y_pred = torch.stack(post_pred(decollate_batch(logit)), 0)
+            ic(data[0]['image'].shape)
+            ic(logit.shape)
+            y_pred = torch.stack(post_pred(decollate_batch(logit)), 1)
             # Collect wandb.log element
             buf_pred.append(y_pred.cpu().numpy())
             # All wandb.log element collection are done
+            ic(y_pred.shape)
+            ic(target.shape)
             acc_batch = compute_dice(y_pred=y_pred, y=target)
             acc_sum, not_nans = (
                 torch.nansum(acc_batch).item(),
@@ -110,7 +116,6 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
             run_acc.update(acc.cpu().numpy(), n=not_nans.cpu().numpy())
         Terminate.show_validing_info(epoch, run_acc.avg, idx, len(loader), start_time, args)
         start_time = time.time()
-    # Log those data on wandb.
     run_acc.log_worst(kwargs.get('run'), epoch)
     return run_acc.avg
 
