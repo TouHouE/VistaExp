@@ -131,21 +131,24 @@ def generate_point_prompt(
 
 def prepare_sam_training_input(
         inputs: torch.Tensor | MetaTensor, labels: torch.Tensor | MetaTensor, args: Namespace,
-        model: Type[Vista2pt5D]):
+        model: Type[Vista2pt5D], only_challenge_categories: bool = False):
     """
 
-    @param inputs: B x roi_z x H x W
-    @param labels: B x H x W
-    @param args:
-    @param model:
-    @return:
+    :param inputs: B x roi_z x H x W
+    :param labels: B x H x W
+    :param args:
+    :param model:
+    :param only_challenge_categories:
+    :return:
     """
     ic(inputs.shape)
     ic(labels.shape)
     # breakpoint()
     # Shape with Nc
     unique_labels: torch.Tensor | MetaTensor = torch.unique(labels)
-    unique_labels: torch.LongTensor = get_unique_labels(unique_labels)
+    unique_labels: torch.LongTensor = get_unique_labels(
+        unique_labels, getattr(args, 'poor_categories') if only_challenge_categories else None
+    )
 
     nc_in_mask: int = len(unique_labels)
     if args.skip_bk:
@@ -286,7 +289,7 @@ def prepare_sam_val_input_cp_only(inputs, labels, args):
     @return:
     """
     # Don't exclude background in val but will ignore it in metric calculation
-    unique_labels = torch.tensor([i for i in range(1, args.nc)]).cuda(args.rank)
+    unique_labels = assign_device(torch.tensor([i for i in range(1, args.nc)]), args.rank)
 
     """
         Some annotation for `batch_labels`
