@@ -137,7 +137,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args, *
         # Take all required data and do permuter.
         inputs_l = batch_data['image']
         image_only = 'label' not in batch_data
-        labels_l: torch.Tensor = batch_data.get('label', torch.zeros_like(inputs_l)) * batch_data['padding_mask']
+        labels_l: torch.Tensor = batch_data.get('label', torch.zeros_like(inputs_l))
         inputs_l, labels_l = permuter(inputs_l, labels_l)
 
         # Prepare to iter num_patch

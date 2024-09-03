@@ -119,7 +119,7 @@ def train_epoch(
         inputs_l = batch_data["image"]
         select_range: range = batch_data.get('range', range(0, inputs_l.shape[-1]))
         only_image = 'label' not in batch_data
-        labels_l = batch_data.get("label", torch.zeros_like(inputs_l)) * batch_data['padding_mask']
+        labels_l = batch_data.get("label", torch.zeros_like(inputs_l))
         inputs_l, labels_l = permuter(inputs_l, labels_l)
         # Remove original batch_size and the channel axes. Then swap the slice-axis at first
         labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
@@ -150,5 +150,7 @@ def train_epoch(
     # I suggest this function is like optimizer.zero_grad(set_to_none=True)
     for param in model.parameters():
         param.grad = None
+    del inputs_l, labels_l
+    torch.cuda.empty_cache()
     bad_record.store(epoch)
     return run_loss.avg
