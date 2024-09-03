@@ -136,7 +136,7 @@ def run_training(
             print(f'Initializing wandb')
             entity = getattr(args, 'id')
             run = wandb.init(
-                project=args.project, name=args.name, id=entity, dir=args.logdir, config=args,
+                project=args.project, name=args.name, id=entity, config=args,
                 resume='allow',
             )
     if args.amp:
