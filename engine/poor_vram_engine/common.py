@@ -129,7 +129,11 @@ def run_training(
             print("Writing Tensorboard logs to ", args.logdir)
         if args.wandb:
             print(f'Initializing wandb')
-            run = wandb.init(project=args.project, name=args.name, config=args)
+            entity = getattr(args, 'id')
+            run = wandb.init(
+                project=args.project, name=args.name, id=entity, dir=args.logdir, config=args,
+                resume='allow',
+            )
     if args.amp:
         scaler = GradScaler()
 
