@@ -3,6 +3,7 @@ import os
 import random
 import time
 from typing import Callable
+import gc
 
 import numpy as np
 import torch
@@ -53,8 +54,6 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
             val_patch_ids = torch.arange(middle_group_index - num_half_patch, middle_group_index + num_half_patch + 1)
         else:
             val_patch_ids = torch.arange(n_group_patch)
-        ic(val_patch_ids.min(), val_patch_ids.max())
-        ic(inputs_l.shape)        
         
         acc_sum_total = 0.0
         not_nans_total = 0.0
@@ -86,6 +85,10 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
             )
             acc_sum_total += acc_sum
             not_nans_total += not_nans
+            del inputs, labels, y_pred, target
+            gc.collect()
+            torch.cuda.empty_cache()
+
 
         acc, not_nans = acc_sum_total / not_nans_total, not_nans_total
         f_name = batch_data["image"].meta["filename_or_obj"]
