@@ -301,7 +301,7 @@ def prepare_sam_val_input_cp_only(inputs, labels, args):
     for _inputs, _labels in zip(inputs, labels):
         pack = {
             'image': _inputs,
-            'original_size': tuple(labels.shape),
+            'original_size': tuple(_labels.shape),
             'labels': unique_labels.unsqueeze(-1)
         }
         prepared_input.append(pack)
@@ -310,4 +310,4 @@ def prepare_sam_val_input_cp_only(inputs, labels, args):
     # labels_prompt = unique_labels.unsqueeze(-1)
     # prepared_input[0].update({"labels": labels_prompt})
 
-    return prepared_input, assign_device(batch_labels.unsqueeze(1), args.rank), unique_labels
+    return prepared_input, assign_device(batch_labels, args.rank), unique_labels
