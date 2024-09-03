@@ -62,7 +62,7 @@ class AdditionalInfoExpanderd(MT.MapTransform):
         d = dict(data)
         d['range'] = self.trainable_range(d)
         # d['padding_mask'] = self.masker(deepcopy(d['image']))
-        d['label'] *= self.masker(d['image'])
+        d['label'] *= self.masker(deepcopy(d['image']))
         logging.warning('Adding new keys [range]')
         return d
 
