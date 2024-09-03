@@ -201,13 +201,14 @@ def split_data(args):
 
         pack = {
             'image': str_img,
-            'label': str_seg,
-            'padding_bg': str_img,
+            'label': str_seg,        
             'image_name': str_img,
             'label_name': str_seg
         }
         if (pname := list_train[_i].get('plaque')) is not None:
-            pack['plaque'] = os.path.join(data_dir, pname)
+            # pack['plaque'] = os.path.join(data_dir, pname)
+            logging.info(f'{pname} exists? {os.path.exists(os.path.join(data_dir, pname))}')
+        
 
         files.append(pack)
 
