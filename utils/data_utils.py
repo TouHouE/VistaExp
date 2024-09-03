@@ -88,14 +88,14 @@ def get_ds(args, phase, datalist, transform) -> data.Dataset | data.CacheDataset
 def get_loader(args):
     train_files, val_files, test_files = split_data(args)
     random_transforms = get_transforms(args)
-    load_keys = ['image', 'label', 'plaque', 'padding_bg']
+    load_keys = ['image', 'label', 'plaque']
     logging.info(f'Current keys: {load_keys}')
     resizer = MT.ResizeWithPadOrCropd(
         keys=load_keys,
         spatial_size=(args.sam_image_size, args.sam_image_size, -1), method='end', mode='minimum',
         allow_missing_keys=True
     )
-    spacer = Spacingd(keys=load_keys, pixdim=args.pixdim, mode=("bilinear", "nearest"), allow_missing_keys=True)
+    spacer = Spacingd(keys=load_keys, pixdim=args.pixdim, mode=("bilinear", "nearest", 'nearest'), allow_missing_keys=True)
 
     if args.no_spacing:
         logging.info(f'Remove Spacing.')
