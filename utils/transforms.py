@@ -18,10 +18,11 @@ class PaddingBackgroundMask(MT.Transform):
         self.dtype = dtype
 
     def __call__(self, img: NdarrayOrTensor) -> NdarrayOrTensor:
-        img: NdarrayTensor = convert_to_tensor(img, track_meta=get_track_meta(), dtype=self.dtype)
-        img[img != img.min()] = 1
-        img[img == img.min()] = 0
-        return img
+        img_: NdarrayTensor = convert_to_tensor(img, track_meta=get_track_meta(), dtype=self.dtype)
+
+        img_[img != img.min()] = 1
+        img_[img == img.min()] = 0
+        return img_
 
 class PaddingBackgroundMaskd(MT.MapTransform):
     backend = PaddingBackgroundMask.backend
@@ -60,8 +61,9 @@ class AdditionalInfoExpanderd(MT.MapTransform):
 
         d = dict(data)
         d['range'] = self.trainable_range(d)
-        d['padding_mask'] = self.masker(deepcopy(d['image']))
-        logging.warning('Adding new keys [range, padding_mask]')
+        # d['padding_mask'] = self.masker(deepcopy(d['image']))
+        d['label'] *= self.masker(d['image'])
+        logging.warning('Adding new keys [range]')
         return d
 
 
