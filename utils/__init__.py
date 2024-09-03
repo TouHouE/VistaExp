@@ -1,5 +1,8 @@
 import warnings, argparse
-
+from typing import Optional
+import logging
+LOG_FORMAT = '[%(asctime)s %(levelname)s %(filename)s:%(lineno)d(%(funcName)s)] %(message)s'
+logging.basicConfig(format=LOG_FORMAT)
 import torch
 
 
@@ -13,7 +16,12 @@ def sorted_by(sort_array, by, return_both=False, reverse=False):
     return xlist, ylist
 
 
-def get_unique_labels(unique_labels) -> torch.LongTensor:
+def get_unique_labels(unique_labels, poor_categories: Optional[list[int]] = None) -> torch.LongTensor:
+    if poor_categories is not None:
+        unique_labels = unique_labels[(unique_labels.view(1, -1) == torch.as_tensor(poor_categories).view(-1, 1)).any(dim=0)]
+        logging.info('Now only provides category hints for challenging training samples.')
+        logging.debug(f"Poor categories: {poor_categories}")
+
     if hasattr(unique_labels, 'as_tensor'):
         return unique_labels.as_tensor().long()
     return unique_labels.long()
@@ -55,7 +63,8 @@ def get_args():
     parser.add_argument('--random_permute', action='store_true', default=False)
     parser.add_argument('--permute_prob', type=float, default=.5)
     parser.add_argument('--worst_mode', choices=['min', 'max'], default=None)
-
+    parser.add_argument('--poor_classes', nargs='+', type=int, help='The digits of hard learning classes')
+    parser.add_argument('--id', type=str, default=None, required=False, help='This argument used to log reuse wandb runs.')
 
     parser.add_argument("--checkpoint", default=None, help="start training from saved checkpoint")
     parser.add_argument("--logdir", default="vista2pt5d", type=str, help="directory to save the tensorboard logs")
