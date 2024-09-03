@@ -192,6 +192,7 @@ class RandomPermute:
         self.args = args
         img_size = args.sam_image_size
         self.do_permute = self.args.random_permute
+        logging.info('Permuter not enable')
         self.permute_prob = self.args.permute_prob
         self.image_keeper = MT.Compose(
             [MT.ResizeWithPadOrCrop(spatial_size=(img_size, img_size, -1), method='end', mode='minimum')])
