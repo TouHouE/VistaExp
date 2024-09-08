@@ -12,6 +12,7 @@ import torch.nn.parallel
 import torch.utils.data.distributed
 from monai.data import decollate_batch, MetaTensor
 from monai.metrics import compute_dice
+from monai import losses as ML
 from monai import transforms as MT
 from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
@@ -19,12 +20,16 @@ import wandb
 from icecream import ic
 
 from engine import utils as EU
-from engine.utils import AverageMeter, RandomPermute, distributed_all_gather, save_checkpoint
+from engine.utils import (
+    AverageMeter, TrainingAlgoManager, RandAugmentor, RandomPermute,
+    distributed_all_gather, save_checkpoint
+)
 from engine.poor_vram_engine import phase1_train as PT1
 from engine.poor_vram_engine import phase2_train as PT2
+from engine.poor_vram_engine import phase3_train as PT3
 from utils import model_input as ModelInputer
 from utils import terminate as Terminate
-
+from utils.losses import GapLoss
 
 @torch.no_grad()
 def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=None, post_pred=None, **kwargs):
@@ -126,6 +131,11 @@ def run_training(
 ):
     writer, run, scaler, stage, train_function = None, None, None, 'init', PT1.train_epoch
     axesPermuter = RandomPermute(args)
+    algoManager = TrainingAlgoManager(algo_map={
+        1: PT1.train_epoch,
+        2: PT2.train_epoch,
+        3: PT3.train_epoch
+    }, patience=5, mode='max', enable_eta=1e-4, cooldown=15, init_stage=1)
     step_cnt = 0
 
     if args.logdir is not None and args.rank == 0 and not args.test_mode:
@@ -136,17 +146,18 @@ def run_training(
             print(f'Initializing wandb')
             entity = getattr(args, 'id')
             run = wandb.init(
-                project=args.project, name=args.name, id=entity, config=args,
-                resume='allow',
+                project=args.project, name=args.name, id=entity, config=args, dir=args.logdir,
+                resume='allow'
             )
     if args.amp:
         scaler = GradScaler()
 
     val_acc_max = 0.0
+    val_avg_acc = .0
     best_epoch = -1
     val_MA = None
     best_log = {}
-    stage = 'init'
+    train_function: Callable = algoManager.current_algo()
 
     for epoch in range(start_epoch, args.max_epochs):
         if args.distributed:
@@ -159,12 +170,14 @@ def run_training(
         # Used to change probability.
         if EU.change_drop_prob(args, epoch):
             Terminate.show_prob(args)
-
+        if algoManager.current_stage == 3:
+            loss_func = GapLoss(loss_map_func=ML.DiceFocalLoss(softmax=True, reduction='none', batch=True))
         # Start Training
         # we don't perform iterative training for the first args.iterative_training_warm_up_epoch epochs
-        if epoch > args.iterative_training_warm_up_epoch and stage == 'init':
-            train_function = PT2.train_epoch
-            stage = 'adjust'
+        # if epoch > args.iterative_training_warm_up_epoch and stage == 'init':
+        #     train_function = PT2.train_epoch
+        #     stage = 'adjust'
+
         train_loss = train_function(
             model, train_loader, optimizer, scaler=scaler, epoch=epoch, loss_func=loss_func, args=args,
             run=run, permuter=axesPermuter
@@ -216,7 +229,7 @@ def run_training(
 
         if scheduler is not None:
             scheduler.step()
-
+        train_function = algoManager.next_algo(val_avg_acc)
     if args.rank == 0 and writer is not None:
         writer.close()
 
