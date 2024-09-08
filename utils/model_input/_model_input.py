@@ -152,7 +152,7 @@ def prepare_sam_training_input(
 
     nc_in_mask: int = len(unique_labels)
     if args.skip_bk:
-        unique_labels: torch.LongTensor = unique_labels[1:]
+        unique_labels: torch.LongTensor = unique_labels[unique_labels != 0]
     # Only possible when background was skipped.
     if nc_in_mask == 0:
         prepared_input = list()
@@ -193,7 +193,7 @@ def prepare_sam_training_input(
 
     # preprocess make the size of label same as low_res_logit
     # The shape is (B, num_prompt, H, W)
-    buf_labels = [labels == unique_labels[i] for i in range(len(unique_labels))]
+    buf_labels = [labels == unique_labels[i] for i in range(len(unique_labels))]  # BoolTensor
     batch_labels_ = torch.stack(buf_labels, dim=1).float()
 
     # The shape will become (B, num_prompt, sam_H / 4, sam_W / 4)
