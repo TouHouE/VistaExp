@@ -225,7 +225,7 @@ class TrainingAlgoManager:
             self, algo_map: dict[int, Callable],
             mode: Literal['min', 'max'] = 'max', patience: int = 10,
             enable_eta: float = 1e-4, eta_mode: Literal['rel', 'abs'] = 'rel',
-            cooldown: int = 0, run: Optional[Run] = None
+            cooldown: int = 0, init_stage: int = 0, run: Optional[Run] = None
     ):
         self.algo_map = algo_map
         self.mode = mode
@@ -234,7 +234,7 @@ class TrainingAlgoManager:
         self.threshold_mode = eta_mode
         self.cooldown = cooldown
         self.cooldown_counter = 0
-        self.current_stage = 0
+        self.current_stage = init_stage
         self.final_stage = max(algo_map.keys())
         self.best = float('inf') if mode == 'min' else float('-inf')
         self.num_bad_epochs = 0
@@ -281,6 +281,9 @@ class TrainingAlgoManager:
         logging.info(f'Next stage index is: {self.current_stage}')
         return self.algo_map[self.current_stage]
 
+    def current_algo(self):
+        return self.algo_map[self.current_stage]
+
     @property
     def in_cooldown(self):
         return self.cooldown_counter > 0
@@ -289,6 +292,14 @@ class TrainingAlgoManager:
         if self.run is None:
             return
         self.run.log(pack)
+
+
+class RandAugmentor:
+    def __init__(self, aug_compose: MT.Compose):
+        self.func = aug_compose
+
+    def __call__(self, data: dict):
+        return self.func(data)
 
 
 def distributed_all_gather(
