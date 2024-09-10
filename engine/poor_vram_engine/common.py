@@ -222,8 +222,9 @@ def run_training(
                             optimizer=optimizer,
                             scheduler=scheduler,
                         )
-                with open(os.path.join(args.logdir, "train.log"), "w") as f:
-                    json.dump(best_log, f)
+                if not args.test_mode:
+                    with open(os.path.join(args.logdir, "train.log"), "w") as f:
+                        json.dump(best_log, f)
             if args.rank == 0 and args.logdir is not None and args.save_checkpoint and not args.test_mode:
                 save_checkpoint(model, epoch, args, best_acc=val_acc_max, filename="model_final.pt")
 
