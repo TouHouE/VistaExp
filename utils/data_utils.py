@@ -33,8 +33,8 @@ from icecream import ic
 from utils import transforms as MyTrans
 
 
-def get_transforms(keys=None, args=None):
-    if args.data_aug or keys is not None:
+def get_transforms(args=None, keys=None):
+    if getattr(args, 'data_aug') is not None or keys is not None:
         random_transforms = ([
             RandRotate90d(keys=keys, prob=0.10, max_k=3, allow_missing_keys=True),
             RandShiftIntensityd(keys=["image"], offsets=0.10, prob=0.10)
