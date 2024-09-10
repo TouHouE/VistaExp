@@ -45,10 +45,14 @@ def start_tb(log_dir):
 
 def main():
     args = get_args()
-    if not args.test_mode:
+    if not args.test_mode:                
         ic.disable()
         args.logdir = Asker.ask_logdir_root(args)
         args.cache = Asker.ask_cache_root(args)
+    
+    if input('Disable icecream?[Y/n]').lower() != 'n' and args.test_mode:
+        ic.disable()
+
     args.amp = not args.noamp
 
     if args.seed > -1:
