@@ -289,7 +289,8 @@ def prepare_sam_val_input_cp_only(inputs, labels: torch.Tensor, args):
     @return:
     """
     # Don't exclude background in val but will ignore it in metric calculation
-    unique_labels = assign_device(torch.tensor([i for i in range(1, args.nc)]), labels.device)
+    # 0: background
+    unique_labels = assign_device(torch.arange(0, args.nc), labels.device)
 
     """
         Some annotation for `batch_labels`
@@ -297,7 +298,7 @@ def prepare_sam_val_input_cp_only(inputs, labels: torch.Tensor, args):
         - As the result, just become the one-hot encoding.
         - The shape is (nc - 1, H, W). nc - 1 is for skip background
     """
-    buffer = [labels == unique_labels[i] for i in range(len(unique_labels))]
+    buffer = [labels == unique_labels[i] for i in range(len(unique_labels))]  # produce one-hot label
     batch_labels = torch.stack(buffer, dim=1).float()
 
     prepared_input = list()
