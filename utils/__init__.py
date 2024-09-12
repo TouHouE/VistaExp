@@ -28,6 +28,8 @@ def get_unique_labels(unique_labels, poor_categories: Optional[list[int]] = None
 
 
 def assign_device(objected, device) -> torch.Tensor:
+    if isinstance(device, torch.device):
+        return objected.to(device)
     if isinstance(device, str):
         if device == 'cpu':
             return objected.cpu()

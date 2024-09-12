@@ -280,7 +280,7 @@ def prepare_sam_test_input(inputs, labels, args, previous_pred=None) -> tuple[li
     return prepared_input, assign_device(batch_labels.unsqueeze(1), args.rank), unique_labels
 
 
-def prepare_sam_val_input_cp_only(inputs, labels, args):
+def prepare_sam_val_input_cp_only(inputs, labels: torch.Tensor, args):
     """
 
     @param inputs: A 3d tensor with shape B x roi_z_iter x H x W
@@ -289,7 +289,7 @@ def prepare_sam_val_input_cp_only(inputs, labels, args):
     @return:
     """
     # Don't exclude background in val but will ignore it in metric calculation
-    unique_labels = assign_device(torch.tensor([i for i in range(1, args.nc)]), args.rank)
+    unique_labels = assign_device(torch.tensor([i for i in range(1, args.nc)]), labels.device)
 
     """
         Some annotation for `batch_labels`

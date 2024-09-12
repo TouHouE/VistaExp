@@ -34,7 +34,7 @@ from utils.losses import GapLoss
 @torch.no_grad()
 def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=None, post_pred=None, **kwargs):
     model.eval()
-    run_acc = AverageMeter()
+    run_acc = AverageMeter(args=args)
     start_time = time.time()
     n_slice = args.roi_z_iter
     hf_slice = n_slice // 2
