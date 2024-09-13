@@ -1,7 +1,10 @@
 import argparse
+from collections import OrderedDict
 import gc
 import json
 from typing import Callable
+import re
+import shutil
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -21,10 +24,11 @@ import numpy as np
 from omegaconf import DictConfig, OmegaConf
 
 from models.factory.vista_factory import vista_model_registry
+from utils import assign_device
 from utils import model_input as ModelInputer
 from utils.io import load_json, save_json
 from engine.utils import find_executable_batch_size
-
+ic.disable()
 
 def clean_cuda(obj_in_cuda):
     del obj_in_cuda
@@ -35,16 +39,25 @@ def clean_cuda(obj_in_cuda):
 
 def load_model(cfg: DictConfig) -> Callable:
     print(cfg['model'])
-    if (debug := getattr(cfg, 'debug', None)) is not None:
-        if (no_model := getattr(debug, 'no_model', False)):
+    if cfg['debug']['enable']:
+        if (no_model := getattr(cfg['debug'], 'no_model', False)):
             return lambda x: [{
                 'high_res_logits': torch.randn((1, cfg['nc'], cfg['image_size'], cfg['image_size']))
             } for _ in range(len(x))]
-
+    old_state_dict = torch.load(cfg['model']['checkpoint'], map_location='cpu')
+    weight_dict = OrderedDict()
+    print(old_state_dict.keys())
+    if (_mapper := old_state_dict.get('state_dict')) is not None:
+        for k, v in _mapper.items():
+            weight_dict[k] = v
+    else:
+        weight_dict = old_state_dict.copy()
     model = vista_model_registry[getattr(cfg['model'], 'model_size', 'vit_b')](
         **cfg['model']['init_kwargs']
-    ).to(getattr(cfg, 'device', 'cpu'))
-    return model
+    )
+    model.load_state_dict(weight_dict)
+
+    return model.to(getattr(cfg, 'device', 'cpu'))
 
 
 def load_dataset(cfg: DictConfig) -> list[dict]:
@@ -66,6 +79,10 @@ def load_dataset(cfg: DictConfig) -> list[dict]:
     else:
         raise NotImplementedError(f'Unknown phase: {phase}')
     for pack in data_list:
+        if pack['image'][0] in ['/', r'\\']:
+            pack['image'] = pack['image'][1:]
+        if pack['label'][0] in ['/', r'\\']:
+            pack['label'] = pack['label'][1:]
         pack['image'] = os.path.join(root_dir, pack['image'])
         pack['label'] = os.path.join(root_dir, pack['label'])
     if cfg['debug']['enable']:
@@ -87,17 +104,20 @@ def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cf
     for indices in tqdm(indices_pack, total=len(indices_pack)):
         sub_image = patch_image[indices]
         sub_label = patch_label[indices]
-        data, *useless = ModelInputer.prepare_sam_val_input_cp_only(sub_image, sub_label, args)
+        data, *useless = ModelInputer.prepare_sam_val_input_cp_only(
+            assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args
+        )
+        # print(data[0]['original_size'])
         clean_cuda(useless)
         outputs = model(data)
-        multi_slice_digits_mask: torch.Tensor = torch.cat([output['high_res_logits'] for output in outputs], dim=0)
+        multi_slice_digits_mask: torch.Tensor = torch.cat([output['high_res_logits'] for output in outputs], dim=1)
         # clean_cuda(outputs)
-        # ic(batch_digits_mask.shape)
+        ic(multi_slice_digits_mask.shape)
         if (hae := getattr(multi_slice_digits_mask, 'as_tensor', None)) is not None:
             multi_slice_digits_mask: monai.data.MetaTensor
             multi_slice_digits_mask: torch.Tensor = multi_slice_digits_mask.as_tensor()
         # print(hae)
-        multi_slice_one_hot_mask = torch.stack(poster(decollate_batch(multi_slice_digits_mask)), dim=1)
+        multi_slice_one_hot_mask = torch.stack(poster(decollate_batch(multi_slice_digits_mask)), dim=0)
         # ic(one_hot_batch_mask.shape)
         # clean_cuda(batch_digits_mask)
         predict_collections.append(multi_slice_one_hot_mask.cpu())
@@ -126,7 +146,7 @@ def compute_all_metrics(y_pred, y_gt, cfg: DictConfig):
         y_gt = y_gt.unsqueeze(0)
 
     nc = cfg['nc']
-    onehot_gt = torch.stack([(y_gt == category).long() for category in range(nc)], dim=1)
+    onehot_gt = torch.stack([(y_gt == category).long() for category in range(1, nc)], dim=1)
     batch_dice = compute_dice(y_pred, onehot_gt)    # B x Nc
     batch_miou = compute_iou(y_pred, onehot_gt)  # B x Nc
     batch_cm = get_confusion_matrix(y_pred, onehot_gt)   # Bx Nc x 4
@@ -143,15 +163,17 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
         MT.LoadImaged(keys, allow_missing_keys=True),
         MT.EnsureChannelFirstd(keys, allow_missing_keys=True),
         MT.Orientationd(keys, axcodes='RAS', allow_missing_keys=True),
-        MT.ResizeWithPadOrCropd(keys, spatial_size=(image_size, image_size, -1), method='end', mode='minimum', allow_missing_keys=True)
+        MT.ResizeWithPadOrCropd(keys, spatial_size=(image_size, image_size, -1), method='end', mode='minimum', allow_missing_keys=True),
+        MT.ScaleIntensityRanged(keys=['image'], a_min=-2000, a_max=1024, b_min=0, b_max=1, clip=True)
     ])
     poster: Callable = MT.Compose([
         MT.Activations(sigmoid=True),
         MT.AsDiscrete(threshold=threshold)
     ])
+    output_dir = getattr(cfg, 'output_dir', ',/output')
     saver: Callable = MT.SaveImage(
-        output_dir=getattr(cfg, 'output_dir', './output'), output_postfix=getattr(cfg, 'output_postfix', 'predict'),
-        output_dtype=np.int8
+        output_dir=os.path.join(output_dir, 'predict'), output_postfix=getattr(cfg, 'output_postfix', 'predict'),
+        output_dtype=np.uint8
     )
     slicePader: Callable = lambda x: F.pad(x, padding_size, 'constant', 0)
     auto_size_iter_slice: Callable = find_executable_batch_size(iter_slice, getattr(cfg, 'batch_size', 32))
@@ -159,62 +181,78 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
         'metrics_by_cases': list()
     }
 
-    for pack in data_list:
+    for predict_id, pack in enumerate(data_list):
         data: dict = loader(pack)
         plan_image = data['image']
         image_name = plan_image.meta["filename_or_obj"]
+        image_name_no_ext = re.split(r'[/\\]', image_name)[-1].replace('.nii.gz', '')
         plan_label = data.get('label', torch.zeros_like(plan_image))
         if (meta := getattr(plan_label, 'meta')) is not None:
             label_name = meta['filename_or_obj']
+            label_name_no_ext = re.split(r'[/\\]', label_name)[-1].replace('.nii.gz', '')
         else:
             label_name = 'none'
+            label_name_no_ext = 'none'
+
         image = slicePader(plan_image).squeeze().unfold(-1, z_roi, 1).permute(2, 3, 0, 1).contiguous()
         label = plan_label.squeeze()
         with autocast(enabled=cfg['amp']):
-            predict_mask: torch.Tensor = auto_size_iter_slice(image, label, model, poster, cfg)
-            saver(predict_mask)
-            dice, iou, cm = compute_all_metrics(predict_mask, label, cfg)
+            predict_mask: torch.Tensor = auto_size_iter_slice(image, label.permute(2, 0, 1).contiguous(), model, poster, cfg)
+            # breakpoint()
+        saver(torch.argmax(predict_mask, dim=0), meta_data=label.meta)
+        dice, iou, cm = compute_all_metrics(predict_mask, label, cfg)
 
-            for bdice, biou, bcm in zip(dice, iou, cm):
-                m_by_case = {
-                    'image name': image_name,
-                    'label name': label_name,
-                    'metrics': {
-                        str(c): {
-                            'Dice': cdice,
-                            f'IoU@{threshold}': ciou,
-                            'TP': ccm[0],
-                            'FP': ccm[1],
-                            'FN': ccm[2],
-                            'TN': ccm[3]
-                        } for c, (cdice, ciou, ccm) in enumerate(bdice, biou, bcm)
-                    }
+        for bdice, biou, bcm in zip(dice, iou, cm):
+            m_by_case = {
+                'image name': image_name,
+                'label name': label_name,
+                'predit id': predict_id,
+                'metrics': {
+                    str(c + 1): {
+                        'Dice': 0 if torch.isnan(cdice) else cdice.item(),
+                        f'IoU@{threshold}': 0 if torch.isnan(ciou) else ciou.item(),
+                        'TP': 0 if torch.isnan(ccm[0]) else ccm[0].item(),
+                        'FP': 0 if torch.isnan(ccm[1]) else ccm[1].item(),
+                        'FN': 0 if torch.isnan(ccm[2]) else ccm[2].item(),
+                        'TN': 0 if torch.isnan(ccm[3]) else ccm[3].item()
+                    } for c, (cdice, ciou, ccm) in enumerate(zip(bdice, biou, bcm))
                 }
-                summary['metrics_by_cases'].append(m_by_case)
-
-        mean_dict = {str(i): {key: list() for key in ['Dice', f'IoU@{threshold}', 'TP', 'FP', 'FN', 'TN']} for i in range(cfg['nc'])}
-        for case in enumerate(summary['metrics_by_cases']):
+            }
+            summary['metrics_by_cases'].append(m_by_case)
+        # print(json.dumps(summary, indent=2))
+        mean_dict = {str(i): {key: list() for key in ['Dice', f'IoU@{threshold}', 'TP', 'FP', 'FN', 'TN']} for i in range(1, cfg['nc'])}
+        for case in summary['metrics_by_cases']:
             for digit, m_pack in case['metrics'].items():
                 for indicator_name, indicator_value in m_pack.items():
                     mean_dict[digit][indicator_name].append(indicator_value)
-        for i in range(cfg['nc']):
-            for digit, m_pack in mean_dict[str(i)].items():
-                for indicator_name, value_collections in m_pack.items():
-                    denominator = len(value_collections)
-                    m_pack[indicator_name] = sum(v / denominator for v in value_collections)
+        for digit in range(1, cfg['nc']):
+            digit = str(digit)
+            mean_dict[digit] = {
+                indicator_name: sum(v / len(value_collections) for v in value_collections)
+                for indicator_name, value_collections in mean_dict[digit].items()
+            }
+            # for indicator_name, value_collections in mean_dict[digit].items():
+            #     denominator = len(value_collections)
+            #     mean_dict[digit] = sum(value / denominator for value in value_collections)
+            # print(m_pack)
+
         summary['mean'] = mean_dict
         save_json(os.path.join(
-            getattr(cfg['output_dir'])
-        ))
+            cfg['output_dir'], 'summary.json'
+        ), summary)
 
 
-@hydra.main(config_path='./conf', config_name='test_val.yaml')
+@hydra.main(config_path='./conf', config_name='val.yaml')
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     cfg['output_dir'] = getattr(cfg, 'output_dir', './output_dir')
     model = load_model(cfg)
     data_list = load_dataset(cfg)
-    validate(model, data_list, cfg=cfg)
+    try:
+        validate(model, data_list, cfg=cfg)
+    except KeyboardInterrupt or Exception:
+        if cfg['debug']['enable']:
+            shutil.rmtree('./outputs')
 
 
 

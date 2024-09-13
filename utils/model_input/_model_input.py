@@ -290,7 +290,7 @@ def prepare_sam_val_input_cp_only(inputs, labels: torch.Tensor, args):
     """
     # Don't exclude background in val but will ignore it in metric calculation
     # 0: background
-    unique_labels = assign_device(torch.arange(0, args.nc), labels.device)
+    unique_labels = assign_device(torch.arange(1, args.nc), labels.device)
 
     """
         Some annotation for `batch_labels`
