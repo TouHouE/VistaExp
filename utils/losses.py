@@ -82,9 +82,9 @@ class GapLoss(nn.Module):
         :return: a value
         """
         loss_map = self.loss_map_func(x, y)
-        weight_x = deepcopy(x).cpu().detach().numpy()
-        A = self.binarize(x)
-        B = torch.stack([torch.from_numpy(skeletonize(a.copy_().detach().cpu().numpy())) for a in A], dim=0).float()
+        weight_x = x.cpu().detach().numpy()
+        A = self.binarize(weight_x)
+        B = torch.stack([torch.from_numpy(skeletonize(a)) for a in A], dim=0).float()
         C = self.calculate_endpoint(B)
         W = self.get_weight_map(C)
         return torch.mean(loss_map * W)
