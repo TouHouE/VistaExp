@@ -47,7 +47,9 @@ def iter_slice_patch(
     :return:
     """
     slice_iter_loss = torch.as_tensor(.0).cuda(args.rank)
-
+    augmentor: Callable = kwargs.get('augmentor', MT.Compose([
+        MT.RandRotated(keys=['image', 'label'], range_x=[-45, 45], range_y=[-45, 45], prob=.75)
+    ]))
     do_vae = args.vae
     pseudo_bs = batch_size
     seq_slice_ids = slice_ids.split(pseudo_bs)
@@ -55,7 +57,8 @@ def iter_slice_patch(
 
     for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
         step_cnt += adpt_pseudo_bs
-        inputs, labels = inputs_l[slice_idx], labels_l[slice_idx]
+        inputs, labels = augmentor({'image': inputs_l[slice_idx], 'label': labels_l[slice_idx]})
+
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
             inputs.cuda(args.rank), labels.cuda(args.rank), args, model
         )
@@ -114,9 +117,9 @@ def train_epoch(
     run_loss = AverageMeter()
     bad_record = WorstDataRecord(args, just_name=True)
     permuter: Callable = kwargs.get('permuter')
-    augmentor: Callable = kwargs.get('augmenter', kwargs.get('augmentor', RandAugmentor(
-        default_augmentor(keys=['image', 'label', 'plaque'], args=args)
-    )))
+    # augmentor: Callable = kwargs.get('augmenter', kwargs.get('augmentor', RandAugmentor(
+    #     default_augmentor(keys=['image', 'label', 'plaque'], args=args)
+    # )))
     assert args.roi_z_iter % 2 == 1
     n_slice = args.roi_z_iter
     pd = (n_slice // 2, n_slice // 2)
@@ -125,7 +128,7 @@ def train_epoch(
     adpt_iter_slice_patch = find_executable_batch_size(iter_slice_patch, args.quasi_batch_size)
 
     for step, batch_data in enumerate(loader):
-        batch_data = augmentor(batch_data)
+        # batch_data = augmentor(batch_data)
         batch_data: dict[str, Union[MetaTensor, str, range]]
         # only take 1 batch
         inputs_l = batch_data["image"]
@@ -144,7 +147,7 @@ def train_epoch(
         _loss = adpt_iter_slice_patch(
             random_ids, inputs_l, labels_l, model,
             optimizer, scaler, only_image, loss_func, args,
-            step=step_cnt
+            step=step_cnt, **kwargs
         )
         bad_record.add(_loss, batch_data['image_name'], batch_data['label_name'])
         if args.distributed:
