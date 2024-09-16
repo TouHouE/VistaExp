@@ -58,8 +58,8 @@ def iter_slice_patch(
 
     for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
         step_cnt += adpt_pseudo_bs
-        inputs, labels = augmentor({'image': inputs_l[slice_idx], 'label': labels_l[slice_idx]})
-
+        pack = augmentor({'image': inputs_l[slice_idx], 'label': labels_l[slice_idx]})
+        inputs, labels = pack['image'], pack['label']
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
             assign_device(inputs, args.rank), assign_device(labels, args.rank), args, model
         )
