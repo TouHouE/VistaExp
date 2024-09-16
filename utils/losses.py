@@ -55,7 +55,7 @@ class GapLoss(nn.Module):
         return x
 
     def calculate_endpoint(self, x_skeleton):
-        print(x_skeleton.dtype)
+        # print(x_skeleton.dtype)
         bs = x_skeleton.shape[0]
         image_shape = x_skeleton.shape[-self.data_dim:]
 
