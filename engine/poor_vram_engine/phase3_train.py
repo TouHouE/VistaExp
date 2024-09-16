@@ -19,6 +19,7 @@ from engine.utils import (
     distributed_all_gather, save_checkpoint,
     select_random_ids, find_executable_batch_size
 )
+from utils import assign_device
 from utils import model_input as ModelInputer
 from utils import terminate as Terminate
 from utils.data_utils import get_transforms as default_augmentor
@@ -60,7 +61,7 @@ def iter_slice_patch(
         inputs, labels = augmentor({'image': inputs_l[slice_idx], 'label': labels_l[slice_idx]})
 
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
-            inputs.cuda(args.rank), labels.cuda(args.rank), args, model
+            assign_device(inputs, args.rank), assign_device(labels, args.rank), args, model
         )
         for param in model.parameters():
             param.grad = None
