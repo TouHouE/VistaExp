@@ -33,6 +33,8 @@ def assign_device(objected, device) -> torch.Tensor:
     if isinstance(device, str):
         if device == 'cpu':
             return objected.cpu()
+        else:
+            device = int(device)
     return objected.cuda(device)
 
 
