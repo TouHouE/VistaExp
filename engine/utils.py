@@ -296,6 +296,8 @@ class TrainingAlgoManager:
 
 class RandAugmentor:
     def __init__(self, aug_compose: MT.Compose):
+        if isinstance(aug_compose, list):
+            aug_compose = MT.Compose(aug_compose)
         self.func = aug_compose
 
     def __call__(self, data: dict):
