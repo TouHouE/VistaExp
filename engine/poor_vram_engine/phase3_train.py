@@ -145,11 +145,15 @@ def train_epoch(
         random_ids: torch.Tensor = select_random_ids(
             select_range, args
         )
-        _loss = adpt_iter_slice_patch(
-            random_ids, inputs_l, labels_l, model,
-            optimizer, scaler, only_image, loss_func, args,
-            step=step_cnt, **kwargs
-        )
+        try:
+            _loss = adpt_iter_slice_patch(
+                random_ids, inputs_l, labels_l, model,
+                optimizer, scaler, only_image, loss_func, args,
+                step=step_cnt, **kwargs
+            )
+        except Exception as e:
+            print(batch_data['image_name'], 'GG')
+            exit(-1)
         bad_record.add(_loss, batch_data['image_name'], batch_data['label_name'])
         if args.distributed:
             loss_list = distributed_all_gather(
