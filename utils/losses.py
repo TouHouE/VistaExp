@@ -85,7 +85,7 @@ class GapLoss(nn.Module):
         A = self.binarize(x).detach().cpu().numpy()
         B = torch.stack([torch.from_numpy(skeletonize(a)) for a in A], dim=0).float()
         C = self.calculate_endpoint(B)
-        W = self.get_weight_map(C)
+        W = self.get_weight_map(C).to(loss_map.device)
         return torch.mean(loss_map * W)
 
 
