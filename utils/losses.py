@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Sequence, Callable, Tuple, Union, Optional
 from functools import partial
 import os
@@ -81,8 +82,9 @@ class GapLoss(nn.Module):
         :return: a value
         """
         loss_map = self.loss_map_func(x, y)
+        weight_x = deepcopy(x).cpu().detach().numpy()
         A = self.binarize(x)
-        B = torch.stack([torch.from_numpy(skeletonize(a.cpu().numpy())) for a in A], dim=0).float()
+        B = torch.stack([torch.from_numpy(skeletonize(a.copy_().detach().cpu().numpy())) for a in A], dim=0).float()
         C = self.calculate_endpoint(B)
         W = self.get_weight_map(C)
         return torch.mean(loss_map * W)
