@@ -14,6 +14,7 @@ import argparse
 import sys
 import warnings
 from subprocess import Popen
+import json
 
 import numpy as np
 import torch
@@ -54,6 +55,10 @@ def main():
         ic.disable()
 
     args.amp = not args.noamp
+    if not args.test_mode:
+        with open(os.path.join(args.logdir, 'args.json'), 'w+') as jout:
+            json.dump(args.__dict__, jout)
+
 
     if args.seed > -1:
         set_determinism(seed=args.seed)

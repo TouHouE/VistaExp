@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import torch.nn.parallel
 import torch.utils.data.distributed
 from torch.cuda.amp import GradScaler, autocast
+from torchvision.transforms import v2 as T2
 import numpy as np
 from monai.data import MetaTensor
 from monai import transforms as MT
@@ -48,8 +49,8 @@ def iter_slice_patch(
     :return:
     """
     slice_iter_loss = torch.as_tensor(.0).cuda(args.rank)
-    augmentor: Callable = kwargs.get('augmentor', MT.Compose([
-        MT.RandRotated(keys=['image', 'label'], range_x=[-45, 45], range_y=[-45, 45], prob=.75)
+    augmentor: Callable = kwargs.get('augmentor', T2.Compose([
+        T2.RandomRotation(degrees=[-45, 45], center=[args.sam_image_size // 2, args.sam_image_size // 2], fill=args.b_min)
     ]))
     do_vae = args.vae
     pseudo_bs = batch_size
@@ -57,12 +58,16 @@ def iter_slice_patch(
     step_cnt = kwargs.get('step_cnt', 0)
 
     for adpt_pseudo_bs, slice_idx in zip(map(len, seq_slice_ids), seq_slice_ids):
-        step_cnt += adpt_pseudo_bs
+        step_cnt += adpt_pseudo_bs        
         pack = augmentor({'image': inputs_l[slice_idx], 'label': labels_l[slice_idx]})
         inputs, labels = pack['image'], pack['label']
         data, target, target_original, skip = ModelInputer.prepare_sam_training_input(
             assign_device(inputs, args.rank), assign_device(labels, args.rank), args, model
         )
+        with torch.no_grad():
+            if torch.sum(target) == 0:
+                print(f'No any label in this batch')
+                continue
         for param in model.parameters():
             param.grad = None
         with autocast(enabled=args.amp):
@@ -145,15 +150,13 @@ def train_epoch(
         random_ids: torch.Tensor = select_random_ids(
             select_range, args
         )
-        try:
-            _loss = adpt_iter_slice_patch(
-                random_ids, inputs_l, labels_l, model,
-                optimizer, scaler, only_image, loss_func, args,
-                step=step_cnt, **kwargs
-            )
-        except Exception as e:
-            print(batch_data['image_name'], 'GG')
-            exit(-1)
+        
+        _loss = adpt_iter_slice_patch(
+            random_ids, inputs_l, labels_l, model,
+            optimizer, scaler, only_image, loss_func, args,
+            step=step_cnt, **kwargs
+        )
+        
         bad_record.add(_loss, batch_data['image_name'], batch_data['label_name'])
         if args.distributed:
             loss_list = distributed_all_gather(
