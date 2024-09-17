@@ -139,10 +139,10 @@ class AverageMeter(object):
         (
             self.worst_val, self.worst_sample_name,
             self.worst_image, self.worst_pred, self.worst_label
-        ) = map(list, (zip(*sorted(list(zip(
+        ) = map(list, zip(*sorted(list(zip(
             self.worst_val, self.worst_sample_name,
             self.worst_image, self.worst_pred, self.worst_label
-        )), reverse=True))))
+        )), reverse=True)))
 
         while len(self.worst_val) > 5:
             _ = self.worst_sample_name.pop(0)
