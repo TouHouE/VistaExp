@@ -103,7 +103,9 @@ def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cf
     predict_collections: list = list()
     args = argparse.Namespace(
         nc=cfg['nc'],
-        rank=cfg['device']
+        rank=cfg['device'],
+        label_prompt=cfg.get('label_prompt', True), point_prompt=cfg.get('point_prompt', True),
+        points_val_pos=cfg['points_val_pos'], points_val_neg=cfg['points_val_neg']
     )
     history = None
 
