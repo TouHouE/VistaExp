@@ -170,10 +170,10 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
         MT.Activations(sigmoid=True),
         MT.AsDiscrete(threshold=threshold)
     ])
-    output_dir = getattr(cfg, 'output_dir', ',/output')
+    output_dir = getattr(cfg, 'output_dir', './output')
     saver: Callable = MT.SaveImage(
         output_dir=os.path.join(output_dir, 'predict'), output_postfix=getattr(cfg, 'output_postfix', 'predict'),
-        output_dtype=np.uint8
+        output_dtype=np.float16
     )
     slicePader: Callable = lambda x: F.pad(x, padding_size, 'constant', 0)
     auto_size_iter_slice: Callable = find_executable_batch_size(iter_slice, getattr(cfg, 'batch_size', 32))
