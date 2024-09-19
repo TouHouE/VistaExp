@@ -116,11 +116,11 @@ def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cf
             )
         elif pm == 'test' and history is None:
             data, *useless = ModelInputer.prepare_sam_test_input(
-                assign_device(sub_image, args.rank), assign_device(sub_label, args.rank)
+                assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args
             )
         else:
             data, *useless = ModelInputer.prepare_sam_test_input(
-                assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), previous_pred=history
+                assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args, previous_pred=history
             )
 
         # print(data[0]['original_size'])
