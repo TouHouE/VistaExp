@@ -135,7 +135,8 @@ def run_training(
         1: PT1.train_epoch,
         2: PT2.train_epoch,
         3: PT3.train_epoch
-    }, patience=5, mode='max', enable_eta=1e-4, cooldown=15, init_stage=1)
+    }, patience=5, mode='max', enable_eta=1e-4, cooldown=15, init_stage=args.init_stage)
+    train_function: Callable = algoManager.current_algo()
     step_cnt = 0
 
     if args.logdir is not None and args.rank == 0 and not args.test_mode:

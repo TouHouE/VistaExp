@@ -139,10 +139,10 @@ class AverageMeter(object):
         (
             self.worst_val, self.worst_sample_name,
             self.worst_image, self.worst_pred, self.worst_label
-        ) = map(list, (zip(*sorted(list(zip(
+        ) = map(list, zip(*sorted(list(zip(
             self.worst_val, self.worst_sample_name,
             self.worst_image, self.worst_pred, self.worst_label
-        )), reverse=True))))
+        )), reverse=True)))
 
         while len(self.worst_val) > 5:
             _ = self.worst_sample_name.pop(0)
@@ -296,6 +296,8 @@ class TrainingAlgoManager:
 
 class RandAugmentor:
     def __init__(self, aug_compose: MT.Compose):
+        if isinstance(aug_compose, list):
+            aug_compose = MT.Compose(aug_compose)
         self.func = aug_compose
 
     def __call__(self, data: dict):

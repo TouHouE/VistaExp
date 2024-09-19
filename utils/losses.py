@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Sequence, Callable, Tuple, Union, Optional
 from functools import partial
 import os
@@ -54,7 +55,7 @@ class GapLoss(nn.Module):
         return x
 
     def calculate_endpoint(self, x_skeleton):
-        print(x_skeleton.dtype)
+        # print(x_skeleton.dtype)
         bs = x_skeleton.shape[0]
         image_shape = x_skeleton.shape[-self.data_dim:]
 
@@ -81,10 +82,10 @@ class GapLoss(nn.Module):
         :return: a value
         """
         loss_map = self.loss_map_func(x, y)
-        A = self.binarize(x)
-        B = torch.stack([torch.from_numpy(skeletonize(a.cpu().numpy())) for a in A], dim=0).float()
+        A = self.binarize(x).detach().cpu().numpy()
+        B = torch.stack([torch.from_numpy(skeletonize(a)) for a in A], dim=0).float()
         C = self.calculate_endpoint(B)
-        W = self.get_weight_map(C)
+        W = self.get_weight_map(C).to(loss_map.device)
         return torch.mean(loss_map * W)
 
 

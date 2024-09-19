@@ -33,6 +33,8 @@ def assign_device(objected, device) -> torch.Tensor:
     if isinstance(device, str):
         if device == 'cpu':
             return objected.cpu()
+        else:
+            device = int(device)
     return objected.cuda(device)
 
 
@@ -67,6 +69,7 @@ def get_args():
     parser.add_argument('--worst_mode', choices=['min', 'max'], default=None)
     parser.add_argument('--poor_classes', nargs='+', type=int, help='The digits of hard learning classes')
     parser.add_argument('--id', type=str, default=None, required=False, help='This argument used to log reuse wandb runs.')
+    parser.add_argument('--init_stage', type=int, default=1)
 
     parser.add_argument("--checkpoint", default=None, help="start training from saved checkpoint")
     parser.add_argument("--logdir", default="vista2pt5d", type=str, help="directory to save the tensorboard logs")
