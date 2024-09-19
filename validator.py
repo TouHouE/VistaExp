@@ -164,7 +164,7 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
         MT.EnsureChannelFirstd(keys, allow_missing_keys=True),
         MT.Orientationd(keys, axcodes='RAS', allow_missing_keys=True),
         MT.ResizeWithPadOrCropd(keys, spatial_size=(image_size, image_size, -1), method='end', mode='minimum', allow_missing_keys=True),
-        MT.ScaleIntensityRanged(keys=['image'], a_min=-2000, a_max=1024, b_min=0, b_max=1, clip=True)
+        MT.ScaleIntensityRanged(keys=['image'], **cfg['preprocessor']['scale'])
     ])
     poster: Callable = MT.Compose([
         MT.Activations(sigmoid=True),
@@ -199,7 +199,8 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
         with autocast(enabled=cfg['amp']):
             predict_mask: torch.Tensor = auto_size_iter_slice(image, label.permute(2, 0, 1).contiguous(), model, poster, cfg)
             # breakpoint()
-        saver(torch.argmax(predict_mask, dim=0), meta_data=label.meta)
+        if getattr(cfg, 'save_mask', False):
+            saver(torch.argmax(predict_mask, dim=0), meta_data=label.meta)
         dice, iou, cm = compute_all_metrics(predict_mask, label, cfg)
 
         for bdice, biou, bcm in zip(dice, iou, cm):
