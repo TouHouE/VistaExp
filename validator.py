@@ -95,19 +95,34 @@ def load_dataset(cfg: DictConfig) -> list[dict]:
 @torch.no_grad()
 def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cfg, **kwargs):
     # ic(patch_image.shape)
-    indices_pack: tuple[torch.Tensor, ...] = torch.split(torch.arange(0, patch_image.shape[0]), batch_size)
+    if (pm := cfg.get('prepare_method', 'val')) == 'val':
+        indices_pack: tuple[torch.Tensor, ...] = torch.split(torch.arange(0, patch_image.shape[0]), batch_size)
+    else:
+        indices_pack: torch.Tensor = torch.arange(0, patch_image.shape[0])
+
     predict_collections: list = list()
     args = argparse.Namespace(
         nc=cfg['nc'],
         rank=cfg['device']
     )
+    history = None
 
     for indices in tqdm(indices_pack, total=len(indices_pack)):
         sub_image = patch_image[indices]
         sub_label = patch_label[indices]
-        data, *useless = ModelInputer.prepare_sam_val_input_cp_only(
-            assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args
-        )
+        if pm == 'val':
+            data, *useless = ModelInputer.prepare_sam_val_input_cp_only(
+                assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args
+            )
+        elif pm == 'test' and history is None:
+            data, *useless = ModelInputer.prepare_sam_test_input(
+                assign_device(sub_image, args.rank), assign_device(sub_label, args.rank)
+            )
+        else:
+            data, *useless = ModelInputer.prepare_sam_test_input(
+                assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), previous_pred=history
+            )
+
         # print(data[0]['original_size'])
         clean_cuda(useless)
         outputs = model(data)
@@ -119,6 +134,7 @@ def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cf
             multi_slice_digits_mask: torch.Tensor = multi_slice_digits_mask.as_tensor()
         # print(hae)
         multi_slice_one_hot_mask = torch.stack(poster(decollate_batch(multi_slice_digits_mask)), dim=0)
+        history = multi_slice_one_hot_mask
         # ic(one_hot_batch_mask.shape)
         # clean_cuda(batch_digits_mask)
         predict_collections.append(multi_slice_one_hot_mask.cpu())
@@ -199,9 +215,12 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
         with autocast(enabled=cfg['amp']):
             predict_mask: torch.Tensor = auto_size_iter_slice(image, label.permute(2, 0, 1).contiguous(), model, poster, cfg)
             # breakpoint()
-        if getattr(cfg, 'save_mask', False):            
+        if getattr(cfg, 'save_mask', False):
+            pred_shape = predict_mask.shape[-3:]
+            bg = torch.zeros((1, *pred_shape))
             save_mask = monai.data.MetaTensor(
-                torch.argmax(predict_mask.squeeze(0), dim=0),
+                # B x nc - 1 x H x W x S -> nc - 1 x H x W x S -> nc x H x W x S
+                torch.argmax(torch.cat([bg, predict_mask.squeeze(0)], dim=0), dim=0),
                 affine=plan_image.meta['affine'], meta=plan_image.meta
             )            
             saver(save_mask, meta_data=plan_image.meta)
