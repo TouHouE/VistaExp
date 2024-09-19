@@ -2,6 +2,7 @@ import argparse
 from collections import OrderedDict
 import gc
 import json
+import logging
 from typing import Callable
 import re
 import shutil
@@ -198,12 +199,11 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
         with autocast(enabled=cfg['amp']):
             predict_mask: torch.Tensor = auto_size_iter_slice(image, label.permute(2, 0, 1).contiguous(), model, poster, cfg)
             # breakpoint()
-        if getattr(cfg, 'save_mask', False):
-
+        if getattr(cfg, 'save_mask', False):            
             save_mask = monai.data.MetaTensor(
-                torch.argmax(predict_mask, dim=0),
+                torch.argmax(predict_mask.squeeze(0), dim=0),
                 affine=plan_image.meta['affine'], meta=plan_image.meta
-            )
+            )            
             saver(save_mask, meta_data=plan_image.meta)
         dice, iou, cm = compute_all_metrics(predict_mask, label, cfg)
 
