@@ -1,6 +1,7 @@
 import warnings, argparse
 from typing import Optional
 import logging
+import re
 LOG_FORMAT = '[%(asctime)s %(levelname)s %(filename)s:%(lineno)d(%(funcName)s)] %(message)s'
 logging.basicConfig(format=LOG_FORMAT)
 import torch
@@ -28,13 +29,14 @@ def get_unique_labels(unique_labels, poor_categories: Optional[list[int]] = None
 
 
 def assign_device(objected, device) -> torch.Tensor:
-    if isinstance(device, torch.device):
+    if isinstance(device, torch.device) or 'cuda' in device:
         return objected.to(device)
     if isinstance(device, str):
         if device == 'cpu':
             return objected.cpu()
         else:
-            device = int(device)
+
+            return objected.cuda(int(re.sub(r'[^0-9]', '', device)))
     return objected.cuda(device)
 
 
