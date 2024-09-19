@@ -172,8 +172,7 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
     ])
     output_dir = getattr(cfg, 'output_dir', './output')
     saver: Callable = MT.SaveImage(
-        output_dir=os.path.join(output_dir, 'predict'), output_postfix=getattr(cfg, 'output_postfix', 'predict'),
-        output_dtype=np.float16
+        output_dir=os.path.join(output_dir, 'predict'), output_postfix=getattr(cfg, 'output_postfix', 'predict')
     )
     slicePader: Callable = lambda x: F.pad(x, padding_size, 'constant', 0)
     auto_size_iter_slice: Callable = find_executable_batch_size(iter_slice, getattr(cfg, 'batch_size', 32))
@@ -183,10 +182,10 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
 
     for predict_id, pack in enumerate(data_list):
         data: dict = loader(pack)
-        plan_image = data['image']
+        plan_image: monai.data.MetaTensor = data['image']
         image_name = plan_image.meta["filename_or_obj"]
         image_name_no_ext = re.split(r'[/\\]', image_name)[-1].replace('.nii.gz', '')
-        plan_label = data.get('label', torch.zeros_like(plan_image))
+        plan_label: monai.data.MetaTensor | torch.Tensor = data.get('label', torch.zeros_like(plan_image))
         if (meta := getattr(plan_label, 'meta')) is not None:
             label_name = meta['filename_or_obj']
             label_name_no_ext = re.split(r'[/\\]', label_name)[-1].replace('.nii.gz', '')
@@ -200,7 +199,12 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
             predict_mask: torch.Tensor = auto_size_iter_slice(image, label.permute(2, 0, 1).contiguous(), model, poster, cfg)
             # breakpoint()
         if getattr(cfg, 'save_mask', False):
-            saver(torch.argmax(predict_mask, dim=0), meta_data=label.meta)
+
+            save_mask = monai.data.MetaTensor(
+                torch.argmax(predict_mask, dim=0),
+                affine=plan_image.meta['affine'], meta=plan_image.meta
+            )
+            saver(save_mask, meta_data=plan_image.meta)
         dice, iou, cm = compute_all_metrics(predict_mask, label, cfg)
 
         for bdice, biou, bcm in zip(dice, iou, cm):
