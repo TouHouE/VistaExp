@@ -67,6 +67,19 @@ class AdditionalInfoExpanderd(MT.MapTransform):
         return d
 
 
+class Debugd(MT.MapTransform):
+    backend = [TransformBackends.TORCH, TransformBackends.NUMPY]
+
+    def __init__(self, keys: KeysCollection, allow_missing_keys: bool = False):
+        super().__init__(keys, allow_missing_keys)
+        # self.masker = PaddingBackgroundMask(dtype=dtype)
+
+    def __call__(self, data: dict) -> dict:
+        d = dict(data)
+        for key, value in d.items():
+            logging.info(f'{key}: {value}')
+        return d
+
 if __name__ == '__main__':
     dimage = r"C:\Users\hsuwi\Downloads\cand_0_Calcium_Score_Axial_Axial_FC12_Cardiac_3.0_20010907093219_3.nii.gz"
     dimage = MT.ResizeWithPadOrCrop(spatial_size=(512, 512, -1), method='end', mode='minimum')(MT.Orientation(axcodes="RAS")(MT.EnsureChannelFirst()(MT.LoadImage()(dimage))))
