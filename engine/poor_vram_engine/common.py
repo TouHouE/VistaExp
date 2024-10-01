@@ -34,7 +34,7 @@ from utils.losses import GapLoss
 @torch.no_grad()
 def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=None, post_pred=None, **kwargs):
     model.eval()
-    run_acc = AverageMeter(args=args)
+    run_acc = AverageMeter()
     start_time = time.time()
     n_slice = args.roi_z_iter
     hf_slice = n_slice // 2
@@ -45,6 +45,7 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
     for idx, batch_data in enumerate(loader):
         buf_image, buf_pred, buf_label, buf_slice_loc = list(), list(), list(), list()
         # only take 1 batch
+        f_name = batch_data["image"].meta["filename_or_obj"]
         inputs_l = batch_data["image"].squeeze()
         labels_l = batch_data["label"].squeeze()
         B = inputs_l.shape[0]
@@ -62,6 +63,7 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
         
         acc_sum_total = 0.0
         not_nans_total = 0.0
+        inputs_l, labels_l = inputs_l.as_tensor(), labels_l.as_tensor()
         # We only loop the center args.num_patch_val slices to save val time
         for patch_idx in val_patch_ids:
             inputs = inputs_l[patch_idx].unsqueeze(0)
@@ -102,7 +104,7 @@ def val_epoch(model, loader, epoch, acc_func, args, iterative=False, post_label=
 
 
         acc, not_nans = acc_sum_total / not_nans_total, not_nans_total
-        f_name = batch_data["image"].meta["filename_or_obj"]
+        # f_name = batch_data["image"].meta["filename_or_obj"]
         print(f"Rank: {args.rank}, Case: {f_name}, Acc: {acc:.4f}, N_prompts: {int(not_nans)} ")
         # prepare some element for update, I take those element as "Bad" quality data.
         run_acc.add(
