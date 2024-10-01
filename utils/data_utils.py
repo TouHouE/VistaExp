@@ -87,7 +87,8 @@ def get_ds(args, phase, datalist, transform) -> data.Dataset | data.CacheDataset
 
 def get_loader(args):
     train_files, val_files, test_files = split_data(args)
-    random_transforms = get_transforms(args)
+    # random_transforms = get_transforms(args)
+    random_transforms = []
     load_keys = ['image', 'label', 'plaque']
     logging.info(f'Current keys: {load_keys}')
     resizer = MT.ResizeWithPadOrCropd(
@@ -101,8 +102,10 @@ def get_loader(args):
         logging.info(f'Remove Spacing.')
         spacer = MT.Identityd(keys=load_keys, allow_missing_keys=True)
 
+
     train_transform = transforms.Compose(
         [
+            MyTrans.Debugd(keys=load_keys, allow_missing_keys=True),
             LoadImaged(keys=load_keys, image_only=True, allow_missing_keys=True),
             EnsureChannelFirstd(keys=load_keys, allow_missing_keys=True),
             Orientationd(keys=load_keys, axcodes="RAS", allow_missing_keys=True),
@@ -207,7 +210,9 @@ def split_data(args):
         }
         if (pname := list_train[_i].get('plaque')) is not None:
             # pack['plaque'] = os.path.join(data_dir, pname)
-            logging.info(f'{pname} exists? {os.path.exists(os.path.join(data_dir, pname))}')
+            pname = pname[1:] if pname[0] in ['/', r'\\'] else pname
+            pack['plaque'] = os.path.join(data_dir, pname)
+            # logging.info(f'{pname} exists? {os.path.exists(os.path.join(data_dir, pname))}')
         
 
         files.append(pack)
