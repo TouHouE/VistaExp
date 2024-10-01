@@ -95,6 +95,15 @@ def main_worker(gpu, args):
         patch_embed_3d=args.patch_embed_3d,
         vae=args.vae
     )
+    """
+    try:
+        print('Try to use torch.compile')
+        model = torch.compile(model)
+    except Exception as e:
+        import traceback
+        traceback.format_exec()
+        print('GG, no torch.compile could use')
+    """
     if (lf := args.loss_func) == 'dice_ce':
         dice_loss = DiceCELoss(sigmoid=True)
     elif lf == 'dice_focal':

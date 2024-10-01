@@ -150,7 +150,7 @@ def train_epoch(
         random_ids: torch.Tensor = select_random_ids(
             select_range, args
         )
-        
+        inputs_l, labels_l = inputs_l.as_tensor(), labels_l.as_tensor()
         _loss = adpt_iter_slice_patch(
             random_ids, inputs_l, labels_l, model,
             optimizer, scaler, only_image, loss_func, args,

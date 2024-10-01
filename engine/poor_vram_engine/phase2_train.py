@@ -149,6 +149,7 @@ def train_epoch(model, loader, optimizer, scaler, epoch, loss_func, run, args, *
         n_inputs_patch = inputs_patch.shape[0]
         ids_size = min(args.num_patch, n_inputs_patch)
         random_ids = torch.from_numpy(np.random.choice(n_inputs_patch, size=ids_size, replace=False))
+        inputs_patch, labels_l = inputs_patch.as_tensor(), labels_l.as_tensor()
 
         _loss = adpt_iter_slice_patch(
             random_ids, inputs_patch, labels_l, model, optimizer, scaler, image_only, loss_func, args
