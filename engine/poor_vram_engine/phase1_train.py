@@ -112,41 +112,43 @@ def train_epoch(
     step_cnt = 0
     final_epoch = args.iterative_training_warm_up_epoch
     adpt_iter_slice_patch = find_executable_batch_size(iter_slice_patch, args.quasi_batch_size)
+    batch_data: list[dict]
 
     for step, batch_data in enumerate(loader):
-        batch_data: dict[str, Union[MetaTensor, str, range]]
-        # only take 1 batch
-        inputs_l = batch_data["image"]
-        select_range: range = batch_data.get('range', range(0, inputs_l.shape[-1]))
-        only_image = 'label' not in batch_data
-        labels_l = batch_data.get("label", torch.zeros_like(inputs_l))
-        inputs_l, labels_l = permuter(inputs_l, labels_l)
-        # Remove original batch_size and the channel axes. Then swap the slice-axis at first
-        labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
-        # Only image need padding for make sure its shape is same as original shape.
-        inputs_l = F.pad(inputs_l, pd, "constant", 0)
-        inputs_l = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()
-        random_ids: torch.Tensor = select_random_ids(
-            select_range, args
-        )
-        _loss = adpt_iter_slice_patch(
-            random_ids, inputs_l, labels_l, model,
-            optimizer, scaler, only_image, loss_func, args,
-            step=step_cnt
-        )
-        bad_record.add(_loss, batch_data['image_name'], batch_data['label_name'])
-        if args.distributed:
-            loss_list = distributed_all_gather(
-                [_loss],
-                out_numpy=True,
+            batch_data: dict[str, Union[MetaTensor, str, range]]
+            # only take 1 batch
+            inputs_l = batch_data["image"]
+            select_range: range = batch_data.get('range', range(0, inputs_l.shape[-1]))
+            only_image = 'label' not in batch_data
+            labels_l = batch_data.get("label", torch.zeros_like(inputs_l))
+            inputs_l, labels_l = permuter(inputs_l, labels_l)
+            # Remove original batch_size and the channel axes. Then swap the slice-axis at first
+            labels_l = labels_l.squeeze().permute(2, 0, 1).contiguous()
+            # Only image need padding for make sure its shape is same as original shape.
+            inputs_l = F.pad(inputs_l, pd, "constant", 0)
+            inputs_l = inputs_l.squeeze().unfold(-1, n_slice, 1).permute(2, 3, 0, 1).contiguous()
+            random_ids: torch.Tensor = select_random_ids(
+                select_range, args
             )
-            run_loss.update(
-                np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0), n=args.batch_size * args.world_size
+            inputs_l, labels_l = inputs_l.as_tensor(), labels_l.as_tensor()
+            _loss = adpt_iter_slice_patch(
+                random_ids, inputs_l, labels_l, model,
+                optimizer, scaler, only_image, loss_func, args,
+                step=step_cnt
             )
-        else:
-            run_loss.update(_loss.item(), n=len(random_ids))
-        Terminate.show_training_info(epoch, step, len(loader), run_loss.avg, start_time, args)
-        start_time = time.time()
+            bad_record.add(_loss, batch_data['image_name'], batch_data['label_name'])
+            if args.distributed:
+                loss_list = distributed_all_gather(
+                    [_loss],
+                    out_numpy=True,
+                )
+                run_loss.update(
+                    np.mean(np.mean(np.stack(loss_list, axis=0), axis=0), axis=0), n=args.batch_size * args.world_size
+                )
+            else:
+                run_loss.update(_loss.item(), n=len(random_ids))
+            Terminate.show_training_info(epoch, step, len(loader), run_loss.avg, start_time, args)
+            start_time = time.time()
     # I suggest this function is like optimizer.zero_grad(set_to_none=True)
     for param in model.parameters():
         param.grad = None
