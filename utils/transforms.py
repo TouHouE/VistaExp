@@ -80,6 +80,39 @@ class Debugd(MT.MapTransform):
             logging.info(f'{key}: {value}')
         return d
 
+
+class RetryLoadImaged(MT.LoadImaged):
+    def __init__(self, keys, retry_time: int = 5, allow_missing_keys: bool = False, **kwargs):
+        super().__init__(keys, allow_missing_keys=allow_missing_keys)
+        self.loader = MT.LoadImage(**kwargs)
+        self.retry_time = retry_time
+
+    def _call_loader(self, key_name, path):
+        loaded_data: NDArrayOrTensor
+        flag = False
+        for time_out in range(self.retry_time):
+            try:
+                loaded_data = self.loader(path)
+                flag = True
+                break
+            except Exception as e:
+                logging.error(f'Retry[{time_out}/{self.retry_time}]Loading [{key_name}]: {path} failed')
+                logging.error(f'{e.args[0]}')
+        if flag:
+            return loaded_data
+        breakpoint()
+        return loaded_data
+
+    def __call__(self, data: dict) -> dict:
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self._call_loader(key, d[key])
+        return d
+
+
+
+
+
 if __name__ == '__main__':
     dimage = r"C:\Users\hsuwi\Downloads\cand_0_Calcium_Score_Axial_Axial_FC12_Cardiac_3.0_20010907093219_3.nii.gz"
     dimage = MT.ResizeWithPadOrCrop(spatial_size=(512, 512, -1), method='end', mode='minimum')(MT.Orientation(axcodes="RAS")(MT.EnsureChannelFirst()(MT.LoadImage()(dimage))))

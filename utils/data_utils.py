@@ -105,8 +105,9 @@ def get_loader(args):
 
     train_transform = transforms.Compose(
         [
-            MyTrans.Debugd(keys=load_keys, allow_missing_keys=True),
-            LoadImaged(keys=load_keys, image_only=True, allow_missing_keys=True),
+            # MyTrans.Debugd(keys=load_keys, allow_missing_keys=True),
+            MyTrans.RetryLoadImaged(keys=load_keys, allow_missing_keys=True),
+            # LoadImaged(keys=load_keys, image_only=True, allow_missing_keys=True),
             EnsureChannelFirstd(keys=load_keys, allow_missing_keys=True),
             Orientationd(keys=load_keys, axcodes="RAS", allow_missing_keys=True),
             spacer, resizer,
@@ -159,7 +160,7 @@ def split_data(args):
     list_train = []
     list_valid = []
     if "validation" in json_data.keys():
-        list_train = json_data["training"]
+        list_train = random.shuffle(json_data["training"])
         list_valid = json_data["validation"]
         list_test = json_data["testing"]
     else:
