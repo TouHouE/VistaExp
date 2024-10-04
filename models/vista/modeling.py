@@ -242,6 +242,7 @@ class Vista2pt5D(nn.Module):
             is given by original_size.
         """
         # make it high resolution
+        ic(masks.shape)
         masks = F.interpolate(
             masks,
             (self.image_encoder.img_size, self.image_encoder.img_size),
@@ -250,8 +251,11 @@ class Vista2pt5D(nn.Module):
         )
         # resize it back to the longest dim (square image)
         masks = F.interpolate(masks, max(original_size), mode="bilinear", align_corners=False)
+        ic(masks.shape)
         # remove padding
+        ic(original_size)
         masks = masks[..., : original_size[0], : original_size[1]]
+        ic(masks.shape)
         return masks
 
     def preprocess(self, x: torch.Tensor, is_input=True) -> torch.Tensor:
