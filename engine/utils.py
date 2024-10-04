@@ -84,12 +84,9 @@ class AverageMeter(object):
     def __init__(self, args: Optional[Type[argparse.Namespace]] = None):
         self.reset()
         self.args = args
-        if args is not None:
-            self.LABELS = UIO.load_labels(getattr(args, 'label_map_path'))
-        else:
-            self.LABELS = None
+        self.class_dice = {c: [0, 0] for c in range(1, args.nc)}
 
-    pass
+
 
     def reset(self):
         self.val = 0
@@ -107,6 +104,19 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
+
+    def update_dice(self, class_dice):
+        for c, dice in enumerate(1, class_dice):
+            if torch.isnan(dice):
+                continue
+            self.class_dice[c][0] += dice
+            self.class_dice[c][1] += 1
+    def get_dice(self, class_idx: int = None):
+        if class_idx is None:
+            return self.avg
+        group = self.class_dice[class_idx]
+        return group[0] / group[1] if group[1] is not None else 0
+
 
     def add(
             self, val_acc: Optional[float] = None,

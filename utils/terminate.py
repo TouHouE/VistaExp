@@ -8,6 +8,7 @@ from tensorboardX import SummaryWriter
 import numpy as np
 from wandb.wandb_run import Run
 
+from engine.utils import AverageMeter
 
 def show_prob(args):
     print(
@@ -46,11 +47,13 @@ def show_before_valid_info(args):
     print("label_prompt (val):", args.label_prompt, "point_prompt (val):", args.point_prompt)
 
 
-def show_valided_info(epoch, val_avg_acc, val_MA, best_epoch, val_acc_max, epoch_time, args):
+def show_valided_info(epoch, val_avg_acc, val_MA, best_epoch, val_acc_max, epoch_time, meter: AverageMeter, args):
+
     print(
         "Final validation  {}/{},".format(epoch, args.max_epochs - 1),
         f"Acc {val_avg_acc:.4f},",
         f"mv Acc {val_MA:.4f},",
+        *[f'Class-{class_idx} Acc: {meter.get_dice(class_idx):.4f},' for class_idx in meter.class_dice.keys()],
         "Previous Best validation at epoch {} is {:.4f},".format(best_epoch, val_acc_max),
         "time {:.2f}s".format(time.time() - epoch_time),
     )
