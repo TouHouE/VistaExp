@@ -52,8 +52,12 @@ def show_valided_info(epoch, val_avg_acc, val_MA, best_epoch, val_acc_max, epoch
     print(
         "Final validation  {}/{},".format(epoch, args.max_epochs - 1),
         f"Acc {val_avg_acc:.4f},",
-        f"mv Acc {val_MA:.4f},",
-        *[f'Class-{class_idx} Acc: {meter.get_dice(class_idx):.4f},' for class_idx in meter.class_dice.keys()],
+        f"mv Acc {val_MA:.4f}\n"
+    )
+    print(
+        *[f'Class-{class_idx} Acc: {meter.get_dice(class_idx):.4f},' for class_idx in meter.class_dice.keys()]
+    )
+    print(
         "Previous Best validation at epoch {} is {:.4f},".format(best_epoch, val_acc_max),
         "time {:.2f}s".format(time.time() - epoch_time),
     )
