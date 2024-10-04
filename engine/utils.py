@@ -84,9 +84,8 @@ class AverageMeter(object):
     def __init__(self, args: Optional[Type[argparse.Namespace]] = None):
         self.reset()
         self.args = args
-        self.class_dice = {c: [0, 0] for c in range(1, args.nc)}
-
-
+        if args is not None:
+            self.class_dice = {c: [0, 0] for c in range(1, args.nc)}
 
     def reset(self):
         self.val = 0
@@ -106,16 +105,23 @@ class AverageMeter(object):
         self.avg = np.where(self.count > 0, self.sum / self.count, self.sum)
 
     def update_dice(self, class_dice):
-        for c, dice in enumerate(1, class_dice):
+        if len(class_dice.shape) > 1:
+            for _class_dice in class_dice:
+                self._update_dice(_class_dice)
+            return
+
+    def _update_dice(self, class_dice):
+        for c, dice in enumerate(class_dice, 1):
             if torch.isnan(dice):
                 continue
             self.class_dice[c][0] += dice
             self.class_dice[c][1] += 1
+
     def get_dice(self, class_idx: int = None):
         if class_idx is None:
             return self.avg
         group = self.class_dice[class_idx]
-        return group[0] / group[1] if group[1] is not None else 0
+        return group[0] / group[1] if group[1] is not None and group[1] > 0 else 0
 
 
     def add(
