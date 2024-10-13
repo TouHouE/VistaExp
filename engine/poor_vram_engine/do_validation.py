@@ -67,7 +67,6 @@ def iter_slice_patch(
     quasi3d_pred = torch.cat(pred_record, dim=1)[None]  # (B=1) x N_class x N_patch x H x W
     # target shape is: N_patch x N_class x H x W -> (B=1) x N_class x N_patch x H x W
     quasi3d_label = torch.cat(target_record, dim=0)[None].permute(0, 2, 1, 3, 4)  # the shape like quasi3d_pred
-    breakpoint()
     sampling_acc = compute_dice(quasi3d_pred, quasi3d_label)
     args.quasi_batch_size = pseudo_bs
     return sampling_acc

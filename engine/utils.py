@@ -114,7 +114,7 @@ class AverageMeter(object):
         for c, dice in enumerate(class_dice, 1):
             if torch.isnan(dice):
                 continue
-            self.class_dice[c][0] += dice
+            self.class_dice[c][0] += float(dice)
             self.class_dice[c][1] += 1
 
     def get_dice(self, class_idx: int = None):
