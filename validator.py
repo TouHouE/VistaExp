@@ -120,8 +120,8 @@ def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cf
                 assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args
             )
         elif pm == 'test':
-            sub_image = sub_image.unsqueeze(0)
-            sub_label = sub_label.unsqueeze(0)
+            # sub_image = sub_image.unsqueeze(0)
+            # sub_label = sub_label.unsqueeze(0)
             data, *useless = ModelInputer.prepare_sam_test_input(
                 assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args
             )
