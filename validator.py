@@ -95,11 +95,13 @@ def load_dataset(cfg: DictConfig) -> list[dict]:
 @torch.no_grad()
 def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cfg, **kwargs):
     # ic(patch_image.shape)
+    """
     if (pm := cfg.get('prepare_method', 'val')) == 'val':
         indices_pack: tuple[torch.Tensor, ...] = torch.split(torch.arange(0, patch_image.shape[0]), batch_size)
     else:
         indices_pack: torch.Tensor = torch.arange(0, patch_image.shape[0])
-
+    """
+    indices_pack: tuple[torch.Tensor, ...] = torch.split(torch.arange(0, patch_image.shape[0]), batch_size)
     predict_collections: list = list()
     args = argparse.Namespace(
         nc=cfg['nc'],
@@ -116,18 +118,14 @@ def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cf
             data, *useless = ModelInputer.prepare_sam_val_input_cp_only(
                 assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args
             )
-        elif pm == 'test' and history is None:
+        elif pm == 'test':
             sub_image = sub_image.unsqueeze(0)
             sub_label = sub_label.unsqueeze(0)
             data, *useless = ModelInputer.prepare_sam_test_input(
                 assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args
             )
         else:
-            sub_image = sub_image.unsqueeze(0)
-            sub_label = sub_label.unsqueeze(0)
-            data, *useless = ModelInputer.prepare_sam_test_input(
-                assign_device(sub_image, args.rank), assign_device(sub_label, args.rank), args, previous_pred=history
-            )
+            raise NotImplementedError(f'prepare_method can only choice from [val, test], not {pm}')
 
         # print(data[0]['original_size'])
         clean_cuda(useless)
@@ -195,7 +193,7 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
     ])
     output_dir = getattr(cfg, 'output_dir', './output')
     saver: Callable = MT.SaveImage(
-        output_dir=os.path.join(output_dir, 'predict'), output_postfix=getattr(cfg, 'output_postfix', 'predict')
+        output_dir=os.path.join(output_dir, 'predict'), output_postfix=getattr(cfg, 'output_postfix', ""), separate_folder=False
     )
     slicePader: Callable = lambda x: F.pad(x, padding_size, 'constant', 0)
     auto_size_iter_slice: Callable = find_executable_batch_size(iter_slice, getattr(cfg, 'batch_size', 32))
@@ -229,6 +227,7 @@ def validate(model: nn.Module, data_list: list[dict], cfg: DictConfig):
                 torch.argmax(torch.cat([bg, predict_mask.squeeze(0)], dim=0), dim=0),
                 affine=plan_image.meta['affine'], meta=plan_image.meta
             )            
+            
             saver(save_mask, meta_data=plan_image.meta)
         dice, iou, cm = compute_all_metrics(predict_mask, label, cfg)
 
