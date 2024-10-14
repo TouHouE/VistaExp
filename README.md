@@ -1,3 +1,23 @@
+## Model Declaration
+- Declaration
+   ```python
+   import argparse
+   from models.factory.vista_factory import vista_model_registry
+   args = argparse.Namespace(
+      sam_image_size=512, z_roi_iter=27
+   )
+   
+   vista = vista_model_registry['vit_b'](
+      checkpoint=None, image_size=args.sam_iamge_size, encoder_in_chans=args.z_roi_iter * 3, patch_embed_3d=True
+   )
+   ```
+- loading pretrained weight 
+   ```python
+   import torch
+   state_dict = torch.load(<...>)
+   model.load_dict(state_dict)
+   ```
+   Please write by your self.
 ## Prepare model input
 ### Training
 ...
