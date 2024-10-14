@@ -53,7 +53,7 @@ def generate_point_prompt(
 ):
     """
     This method can only process one sample each time.
-    @param batch_labels_:
+    @param batch_labels_: N_prompt x H x W
     @param args:
     @param points_pos:
     @param points_neg:
@@ -309,9 +309,5 @@ def prepare_sam_val_input_cp_only(inputs, labels: torch.Tensor, args):
             'labels': unique_labels.unsqueeze(-1)
         }
         prepared_input.append(pack)
-    # prepared_input = [{"image": inputs, "original_size": tuple(labels.shape)}]
-    #
-    # labels_prompt = unique_labels.unsqueeze(-1)
-    # prepared_input[0].update({"labels": labels_prompt})
 
     return prepared_input, assign_device(batch_labels, args.rank), unique_labels
