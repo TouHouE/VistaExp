@@ -95,6 +95,7 @@ def load_dataset(cfg: DictConfig) -> list[dict]:
 @torch.no_grad()
 def iter_slice(batch_size, patch_image, patch_label, model, poster: Callable, cfg, **kwargs):
     # ic(patch_image.shape)
+    pm = cfg.get('prepare_method', 'val')
     """
     if (pm := cfg.get('prepare_method', 'val')) == 'val':
         indices_pack: tuple[torch.Tensor, ...] = torch.split(torch.arange(0, patch_image.shape[0]), batch_size)
